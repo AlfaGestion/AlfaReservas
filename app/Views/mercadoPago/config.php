@@ -22,7 +22,7 @@ $mpKeys = $mpKeysModel->first();
         <li><?= esc($error) ?></li>
     <?php endforeach ?>
 
-    <form action="<?= base_url($admin['unit'] . '/configMp') ?>" method="POST">
+    <form action="<?= base_url('configMp') ?>" method="POST">
 
         <?php if (session('msg')) : ?>
             <div class="alert alert-<?= session('msg.type') ?> alert-dismissible fade show" role="alert">

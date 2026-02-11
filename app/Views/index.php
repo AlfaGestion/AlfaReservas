@@ -82,6 +82,7 @@ $mpKeys = $mpKeysModel->first();
                     <input type="date" name="fecha" id="fecha" class="form-control" value="" aria-label="date">
                     <label for="fecha">Fecha</label>
                 </div>
+                <div id="closureNotice" class="alert alert-warning d-none"></div>
 
                 <div class="horario d-flex flex-row">
                     <div class="form-floating" id="div-time-h" style="width: 100%;">
@@ -134,22 +135,28 @@ $mpKeys = $mpKeysModel->first();
                     <label for="inputMonto">Monto</label>
                 </div>
 
-                <div class="d-flex justify-content-center align-items-center-flex-column" style="width: 100%;">
-                    <div class="form-floating flex-nowrap mb-3 d-flex align-items-center justify-content-center flex-row me-1" style="width: 30%;">
-                        <input type="number" class="form-control" name="codigoArea" id="codigoArea" placeholder="Ingrese el código de área" aria-label="codigo" required>
-                        <label for="codigoArea">Código de área</label>
-                    </div>
-
-                    <div class="form-floating flex-nowrap mb-3 d-flex align-items-center justify-content-center flex-row" style="width: 70%;">
-                        <input type="number" class="form-control" name="telefono" id="telefono" placeholder="Ingrese el teléfono" aria-label="name" required>
-                        <label for="telefono">Teléfono</label>
-                    </div>
+                <div class="form-floating flex-nowrap mb-3">
+                    <input type="number" class="form-control" name="telefono" id="telefono" placeholder="Ingrese el telefono completo" aria-label="name" required>
+                    <label for="telefono">Telefono</label>
                 </div>
 
                 <div class="form-floating flex-nowrap mb-3">
-                    <input type="text" class="form-control" name="nombre" id="nombre" placeholder="Ingrese el nombre" aria-label="name" required>
-                    <label for="nombre">Nombre</label>
+                    <input type="text" class="form-control" name="localidad" id="localidad" placeholder="Ingrese la localidad" aria-label="localidad" autocomplete="off" spellcheck="false">
+                    <label for="localidad">Localidad</label>
                 </div>
+
+                <div class="form-floating flex-nowrap mb-3">
+                    <input type="text" class="form-control" name="nombre" id="nombre" placeholder="Ingrese el nombre y apellido" aria-label="name" required>
+                    <label for="nombre">Nombre y apellido</label>
+                </div>
+
+                <datalist id="localitiesList">
+                    <?php if (!empty($localities)) : ?>
+                        <?php foreach ($localities as $loc) : ?>
+                            <option value="<?= $loc['name'] ?>"></option>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </datalist>
 
                 <?php if (session()->logueado) : ?>
                     <button type="button" class="btn" style="background-color: #f39323;" id="confirmarAdminReserva">Confirmar reserva</button>
@@ -281,7 +288,7 @@ $mpKeys = $mpKeysModel->first();
     <?php echo $this->section('scripts') ?>
     <script src="https://sdk.mercadopago.com/js/v2"></script>
 
-    <script src="<?= base_url(PUBLIC_FOLDER . "assets/js/formReserva.js") ?>"></script>
+    <script src="<?= base_url(PUBLIC_FOLDER . "assets/js/formReserva.js?v=" . filemtime(FCPATH . "assets/js/formReserva.js")) ?>"></script>
     <script>
         let esDomingo = <?php echo json_encode($esDomingo); ?>;
     </script>

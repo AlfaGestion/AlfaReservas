@@ -1,27 +1,132 @@
-const fecha = document.getElementById('fecha')
-const horarioDesde = document.getElementById('horarioDesde')
-const horarioHasta = document.getElementById('horarioHasta')
-const cancha = document.getElementById('cancha')
-const inputMonto = document.getElementById('inputMonto')
-const telefono = document.getElementById('telefono')
-const nombre = document.getElementById('nombre')
+if (!window.__editReservaLoaded) {
+  window.__editReservaLoaded = true;
+
+const editModalEl = document.getElementById('editarReservaModal')
 const modalSpinner = new bootstrap.Modal('#modalSpinner')
 const modalResult = new bootstrap.Modal('#modalResult')
 const contentEditBookingResult = document.getElementById('bookingEditResult')
+const editBookingModal = new bootstrap.Modal('#editarReservaModal')
 
+function getEditEls() {
+    const els = {
+        fecha: editModalEl.querySelector('#fecha'),
+        horarioDesde: editModalEl.querySelector('#horarioDesde'),
+        horarioHasta: editModalEl.querySelector('#horarioHasta'),
+        cancha: editModalEl.querySelector('#cancha'),
+        inputMonto: editModalEl.querySelector('#inputMonto'),
+        telefono: editModalEl.querySelector('#telefono'),
+        nombre: editModalEl.querySelector('#nombre'),
+        localidad: editModalEl.querySelector('#localidad'),
+    }
+    return els
+}
+
+function normalizeText(value) {
+    return (value || '')
+        .toString()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+}
+
+function setupLocalityAutocomplete(inputEl, datalistId) {
+    if (!inputEl) return
+    const dataList = document.getElementById(datalistId)
+    if (!dataList) return
+
+    const options = Array.from(dataList.querySelectorAll('option'))
+        .map(opt => opt.value)
+        .filter(Boolean)
+
+    if (options.length === 0) return
+
+    const parent = inputEl.parentElement
+    if (parent) {
+        parent.style.position = 'relative'
+    }
+
+    const box = document.createElement('div')
+    box.className = 'locality-suggestions'
+    box.style.position = 'absolute'
+    box.style.top = '100%'
+    box.style.left = '0'
+    box.style.right = '0'
+    box.style.zIndex = '50'
+    box.style.background = '#fff'
+    box.style.border = '1px solid #cfd4da'
+    box.style.borderTop = 'none'
+    box.style.maxHeight = '200px'
+    box.style.overflowY = 'auto'
+    box.style.display = 'none'
+    box.style.boxShadow = '0 4px 12px rgba(0,0,0,0.08)'
+
+    parent.appendChild(box)
+
+    const render = (items) => {
+        box.innerHTML = ''
+        if (!items || items.length === 0) {
+            box.style.display = 'none'
+            return
+        }
+        items.slice(0, 8).forEach((name) => {
+            const item = document.createElement('div')
+            item.textContent = name
+            item.style.padding = '8px 12px'
+            item.style.cursor = 'pointer'
+            item.addEventListener('mousedown', (e) => {
+                e.preventDefault()
+                inputEl.value = name
+                box.style.display = 'none'
+            })
+            item.addEventListener('mouseenter', () => {
+                item.style.background = '#f1f3f5'
+            })
+            item.addEventListener('mouseleave', () => {
+                item.style.background = '#fff'
+            })
+            box.appendChild(item)
+        })
+        box.style.display = 'block'
+    }
+
+    const onInput = () => {
+        const q = normalizeText(inputEl.value)
+        if (!q) {
+            box.style.display = 'none'
+            return
+        }
+        const matches = options.filter((name) => normalizeText(name).includes(q))
+        render(matches)
+    }
+
+    inputEl.addEventListener('input', onInput)
+    inputEl.addEventListener('focus', onInput)
+    inputEl.addEventListener('blur', () => {
+        setTimeout(() => { box.style.display = 'none' }, 150)
+    })
+}
 
 let bookingId
 let updateData
 
 
 document.addEventListener('DOMContentLoaded', (e) => {
+    const { fecha } = getEditEls()
     const fechaActual = new Date().toISOString().split('T')[0]
     fecha.setAttribute('min', fechaActual)
     fecha.value = fechaActual;
+
+    const { localidad } = getEditEls()
+    setupLocalityAutocomplete(localidad, 'localitiesListAdmin')
 })
 
 document.addEventListener('click', async (e) => {
     if (e.target) {
+        const editBtn = e.target.closest('#editarReservaBtn')
+        const updateBtn = e.target.closest('#actualizarReserva')
+        const cancelBtn = e.target.closest('#cancelarReservaEdit')
+
+        const { fecha, horarioDesde, horarioHasta, cancha, inputMonto, telefono, nombre, localidad } = getEditEls()
         const rate = await getRate()
 
         updateData = {
@@ -31,12 +136,21 @@ document.addEventListener('click', async (e) => {
             horarioHasta: horarioHasta.value,
             total: inputMonto.value,
             parcial: inputMonto.value * rate / 100,
+            localidad: localidad ? localidad.value : '',
         }
 
-        if (e.target.id == 'editarReservaModal') {
-            bookingId = e.target.dataset.id
+        if (editBtn) {
+            bookingId = editBtn.dataset.id
+            if (!bookingId) {
+                alert('No se pudo obtener el ID de la reserva.')
+                return
+            }
 
             const currentBooking = await getBooking(bookingId)
+            if (!currentBooking) {
+                alert('No se pudo obtener la reserva.')
+                return
+            }
 
             fecha.value = currentBooking.date
             horarioDesde.value = currentBooking.time_from
@@ -45,8 +159,13 @@ document.addEventListener('click', async (e) => {
             telefono.value = currentBooking.phone
             nombre.value = currentBooking.name
             inputMonto.value = currentBooking.total
+            if (localidad) {
+                localidad.value = currentBooking.locality || ''
+            }
 
-        } else if (e.target.id == 'actualizarReserva') {
+            editBookingModal.show()
+
+        } else if (updateBtn) {
             const currentBooking = await getBooking(bookingId)
 
             updateData.bookingId = bookingId
@@ -66,7 +185,7 @@ document.addEventListener('click', async (e) => {
             }
 
             updateBooking(updateData)
-        } else if (e.target.id == 'cancelarReserva') {
+        } else if (cancelBtn) {
             editBookingModal.hide()
         }
     }
@@ -74,6 +193,7 @@ document.addEventListener('click', async (e) => {
 
 document.addEventListener('change', async (e) => {
     if (e.target) {
+        const { fecha, horarioDesde, horarioHasta, cancha, inputMonto } = getEditEls()
         if (e.target.id == 'horarioDesde') {
 
             const indexDe = horarioDesde.selectedIndex
@@ -114,6 +234,14 @@ async function updateBooking(data) {
             body: JSON.stringify(data)
         });
 
+        const responseData = await response.json();
+
+        if (!response.ok || responseData.error) {
+            alert(responseData.message || 'El horario ya está ocupado o en proceso.')
+            modalSpinner.hide()
+            return
+        }
+
         if (response.ok) {
 
             contentEditBookingResult.innerHTML = `
@@ -128,9 +256,6 @@ async function updateBooking(data) {
             setTimeout(() => { location.reload(true) }, 1000)
 
 
-        } else {
-            alert('Algo salió mal. No se pudo editar la reserva.');
-            return
         }
 
     } catch (error) {
@@ -163,10 +288,11 @@ async function getBooking(id) {
 
 // Trae los horarios de las reservas hechas
 async function getTimeFromBookings() {
-    const fecha = document.getElementById('fecha').value
+    const { fecha } = getEditEls()
+    const fechaValue = fecha.value
 
     try {
-        const response = await fetch(`${baseUrl}getBookings/${fecha}`);
+        const response = await fetch(`${baseUrl}getBookings/${fechaValue}`);
         const responseData = await response.json();
 
         if (responseData.data != '') {
@@ -185,6 +311,7 @@ async function getTimeFromBookings() {
 // Quita las canchas sin horario disponible seleccionado
 async function getFieldForTimeBookings(timeBookings) {
 
+    const { cancha, horarioDesde, horarioHasta } = getEditEls()
     const options = cancha.options;
 
     timeBookings.forEach(element => {
@@ -285,6 +412,7 @@ async function getNocturnalTime() {
 
 async function getAmount(field = "1") {
     try {
+        const { horarioDesde, horarioHasta, inputMonto } = getEditEls()
         const nocturnalTime = await getNocturnalTime()
         const selectedField = await getField(field)
 
@@ -336,4 +464,6 @@ async function getRate() {
         console.error('Error:', error);
         throw error;
     }
+}
+
 }

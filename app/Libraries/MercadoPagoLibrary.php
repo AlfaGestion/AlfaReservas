@@ -22,6 +22,7 @@ class MercadoPagoLibrary
             throw new \Exception("Mercado Pago Access Token no encontrado.");
         }
 
+        $this->ensureCaBundle();
         SDK::setAccessToken($mpKeys['access_token']);
 
         try {
@@ -39,9 +40,12 @@ class MercadoPagoLibrary
             $item->currency_id = 'ARS';
 
             $preference->items = [$item];
+            $envBaseUrl = getenv('MP_BACK_URL_BASE');
+            $appConfig = config('App');
+            $baseUrl = rtrim($envBaseUrl ?: $appConfig->baseURL, '/') . '/';
             $preference->back_urls = [
-            "success" => 'https://alfagestion.com.ar/cancha-test/payment/success',
-            "failure" => 'https://alfagestion.com.ar/cancha-test/payment/failure',
+            "success" => $baseUrl . 'payment/success',
+            "failure" => $baseUrl . 'payment/failure',
             ];
 
             $preference->auto_return = "approved";
@@ -66,6 +70,27 @@ class MercadoPagoLibrary
         } catch (\Exception $e) {
             // Captura cualquier error de la SDK, incluyendo la excepción que forzamos arriba.
             throw new \Exception("Error al crear la preferencia de pago: " . $e->getMessage());
+        }
+    }
+
+    private function ensureCaBundle()
+    {
+        $caFile = ini_get('curl.cainfo');
+        if (!$caFile) {
+            $caFile = ini_get('openssl.cafile');
+        }
+        if (!$caFile) {
+            $candidate = 'C:\\php\\cacert.pem';
+            if (is_file($candidate)) {
+                $caFile = $candidate;
+            }
+        }
+
+        if ($caFile && is_file($caFile)) {
+            ini_set('curl.cainfo', $caFile);
+            ini_set('openssl.cafile', $caFile);
+            putenv("CURL_CA_BUNDLE={$caFile}");
+            putenv("SSL_CERT_FILE={$caFile}");
         }
     }
 }

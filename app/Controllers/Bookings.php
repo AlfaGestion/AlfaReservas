@@ -4,7 +4,10 @@ namespace App\Controllers;
 
 use App\Controllers\BaseController;
 use App\Libraries\PrintBookings;
+use App\Models\BookingSlotsModel;
 use App\Models\BookingsModel;
+use App\Models\CancelReservationsModel;
+use App\Models\ConfigModel;
 use App\Models\CustomersModel;
 use App\Models\FieldsModel;
 use App\Models\MercadoPagoModel;
@@ -15,12 +18,94 @@ use CodeIgniter\I18n\Time;
 
 class Bookings extends BaseController
 {
+    private function isClosedForDateField($date, $fieldId)
+    {
+        if (empty($date)) {
+            return false;
+        }
+        $cancelModel = new CancelReservationsModel();
+        $closures = $cancelModel->where('cancel_date', $date)->findAll();
+        if (empty($closures)) {
+            return false;
+        }
+        foreach ($closures as $c) {
+            if (empty($c['field_id'])) {
+                return true;
+            }
+            if (!empty($fieldId) && !empty($c['field_id']) && (int)$c['field_id'] === (int)$fieldId) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private function sendBookingEmail($bookingId)
+    {
+        $configModel = new ConfigModel();
+        $toRow = $configModel->where('clave', 'email_reservas')->first();
+        $toEmail = $toRow['valor'] ?? '';
+        if (!is_string($toEmail) || trim($toEmail) === '') {
+            return;
+        }
+
+        $bookingsModel = new BookingsModel();
+        $fieldsModel = new FieldsModel();
+        $booking = $bookingsModel->getBooking($bookingId);
+        if (!$booking) {
+            return;
+        }
+
+        $fieldName = $fieldsModel->getField($booking['id_field'])['name'] ?? 'N/D';
+        $fecha = $booking['date'] ? date('d/m/Y', strtotime($booking['date'])) : 'N/D';
+        $horario = ($booking['time_from'] ?? '') . ' a ' . ($booking['time_until'] ?? '');
+        $localidad = $booking['locality'] ?? '';
+
+        $message = "Nueva reserva\n\n"
+            . "Nombre: {$booking['name']}\n"
+            . "Teléfono: {$booking['phone']}\n"
+            . "Localidad: " . ($localidad !== '' ? $localidad : 'N/D') . "\n"
+            . "Fecha: {$fecha}\n"
+            . "Horario: {$horario}\n"
+            . "Cancha: {$fieldName}\n";
+
+        $email = \Config\Services::email();
+        $caPath = ROOTPATH . 'cacert.pem';
+        if (is_file($caPath)) {
+            ini_set('openssl.cafile', $caPath);
+            ini_set('openssl.capath', $caPath);
+        }
+        stream_context_set_default([
+            'ssl' => [
+                'verify_peer' => false,
+                'verify_peer_name' => false,
+                'allow_self_signed' => true,
+            ],
+        ]);
+        $emailConfig = config('Email');
+        $fromEmail = $emailConfig->fromEmail ?? '';
+        $fromName = $emailConfig->fromName ?? 'Reservas';
+        if (!is_string($fromEmail) || trim($fromEmail) === '') {
+            $fromEmail = $toEmail;
+        }
+
+        $email->setFrom($fromEmail, $fromName);
+        $email->setTo($toEmail);
+        $email->setSubject('Nueva reserva');
+        $email->setMessage($message);
+
+        if (!$email->send()) {
+            log_message('error', 'No se pudo enviar email de reserva: ' . $email->printDebugger(['headers']));
+        }
+    }
+
     public function saveBooking()
     {
         $bookingsModel = new BookingsModel();
+        $bookingSlotsModel = new BookingSlotsModel();
         $customersModel = new CustomersModel();
 
         $data = $this->request->getJSON();
+        $db = \Config\Database::connect();
 
         $queryBooking = [
             'date'                  => $data->fecha,
@@ -28,7 +113,8 @@ class Bookings extends BaseController
             'time_from'             => $data->horarioDesde,
             'time_until'            => $data->horarioHasta,
             'name'                  => $data->nombre,
-            'phone'                 => $data->codigoArea . $data->telefono,
+            'phone'                 => $data->telefono,
+            'locality'              => $data->localidad ?? null,
             'payment'               => $data->monto,
             'approved'              => 0,
             'total'                 => $data->total,
@@ -43,13 +129,21 @@ class Bookings extends BaseController
             'booking_time'          => date("Y-m-d H:i:s"),
             'mp'                    => 0,
             'annulled'              => 0, // Aseguramos que este nuevo registro no esté anulado
+            'created_by_type'       => 'CLIENTE',
+            'created_by_name'       => 'CLIENTE',
+            'created_by_user_id'    => null,
         ];
 
         $queryCustomer = [
             'name'  => $data->nombre,
-            'phone' => $data->codigoArea . $data->telefono,
+            'phone' => $data->telefono,
             'offer' => 0,
+            'city'  => $data->localidad ?? null,
         ];
+
+        if ($this->isClosedForDateField($data->fecha, $data->cancha)) {
+            return $this->response->setJSON($this->setResponse(409, true, null, 'No se puede reservar: hay un cierre informado para esa fecha.'));
+        }
 
         // Verificar si ya existe una reserva activa
         $existingBooking = $bookingsModel->where('date', $data->fecha)
@@ -68,14 +162,19 @@ class Bookings extends BaseController
 
         if ($existingCustomer) {
             foreach ($existingCustomer as $customer) {
-                if ($customer['phone'] == $data->codigoArea . $data->telefono) {
+                if ($customer['phone'] == $data->telefono) {
                     $exist = false;
 
+                    $updateCustomer = [
+                        'name' => $data->nombre,
+                        'city' => $data->localidad ?? null,
+                    ];
+
                     if ($data->oferta == 1) {
-                        $offer = ['offer' => 0];
-                        $customersModel->update($customer['id'], $offer);
+                        $updateCustomer['offer'] = 0;
                     }
 
+                    $customersModel->update($customer['id'], $updateCustomer);
                     break;
                 }
             }
@@ -87,10 +186,38 @@ class Bookings extends BaseController
 
         try {
             if (count($queryBooking) != 0) {
+                $db->transBegin();
+
+                $slotData = [
+                    'date' => $data->fecha,
+                    'id_field' => $data->cancha,
+                    'time_from' => $data->horarioDesde,
+                    'time_until' => $data->horarioHasta,
+                    'status' => 'pending',
+                    'active' => 1,
+                    'expires_at' => date('Y-m-d H:i:s', strtotime('+5 minutes')),
+                    'created_at' => date('Y-m-d H:i:s'),
+                ];
+
+                $slotId = $bookingSlotsModel->insert($slotData, true);
+                if (!$slotId) {
+                    $db->transRollback();
+                    return $this->response->setJSON($this->setResponse(409, true, null, 'El horario ya está en proceso de reserva.'));
+                }
+
                 $bookingsModel->insert($queryBooking);
+                $bookingId = $bookingsModel->getInsertID();
+
+                $bookingSlotsModel->update($slotId, ['booking_id' => $bookingId]);
+
+                $db->transCommit();
+                $this->sendBookingEmail($bookingId);
                 return $this->response->setJSON($this->setResponse(null, null, null, 'Respuesta exitosa'));
             }
         } catch (\Exception $e) {
+            if ($db->transStatus() === false) {
+                $db->transRollback();
+            }
             return $this->response->setJSON($this->setResponse(404, true, null, $e->getMessage()));
         }
     }
@@ -105,6 +232,7 @@ class Bookings extends BaseController
 
         $time = $timeModel->getOpeningTime();
 
+        $bookings = [];
         if ($fecha != '') {
             $bookings = $bookingsModel->where('date', $fecha)->where('annulled', 0)->findAll();
         }
@@ -145,12 +273,10 @@ class Bookings extends BaseController
             }
         }
 
-        if ($bookings) {
-            try {
-                return $this->response->setJSON($this->setResponse(null, null, $timeBookings, 'Respuesta exitosa'));
-            } catch (\Exception $e) {
-                return $this->response->setJSON($this->setResponse(404, true, null, $e->getMessage()));
-            }
+        try {
+            return $this->response->setJSON($this->setResponse(null, null, $timeBookings, 'Respuesta exitosa'));
+        } catch (\Exception $e) {
+            return $this->response->setJSON($this->setResponse(404, true, null, $e->getMessage()));
         }
     }
 
@@ -209,6 +335,7 @@ class Bookings extends BaseController
     public function getReports()
     {
         $paymentsModel = new PaymentsModel();
+        $bookingsModel = new BookingsModel();
         $data = $this->request->getJSON();
 
         // 1. Limpieza básica de filtros
@@ -223,10 +350,17 @@ class Bookings extends BaseController
             payments.id_mercado_pago,
             users.user as nombre_usuario, 
             customers.name as nombre_cliente, 
-            customers.phone as telefono_cliente
+            customers.phone as telefono_cliente,
+            bookings.id as booking_id,
+            bookings.name as booking_name,
+            bookings.phone as booking_phone,
+            bookings.payment as booking_payment,
+            bookings.total as booking_total,
+            bookings.total_payment as booking_total_payment
         ')
             ->join('users', 'users.id = payments.id_user', 'left')
             ->join('customers', 'customers.id = payments.id_customer', 'left')
+            ->join('bookings', 'bookings.id = payments.id_booking', 'left')
             ->where('payments.date >=', $data->fechaDesde)
             ->where('payments.date <=', $data->fechaHasta);
 
@@ -238,17 +372,77 @@ class Bookings extends BaseController
 
         // 3. Formateo de salida (mucho más ligero)
         $payments = array_map(function ($p) {
+            $monto = $p['amount'];
+            if ($p['payment_method'] === 'mercado_pago') {
+                $monto = ($p['booking_total_payment'] ?? 0) ? ($p['booking_total'] ?? $p['amount']) : ($p['booking_payment'] ?? $p['amount']);
+            }
             return [
                 'fecha'           => date("d/m/Y", strtotime($p['date'])),
-                'pago'            => $p['amount'],
+                'pago'            => $monto,
                 'usuario'         => $p['nombre_usuario'] ?? 'N/A',
                 'idUsuario'       => $p['id_user'],
-                'cliente'         => $p['nombre_cliente'] ?? 'N/A',
-                'telefonoCliente' => $p['telefono_cliente'] ?? 'N/A',
+                'cliente'         => $p['nombre_cliente'] ?? $p['booking_name'] ?? 'N/A',
+                'telefonoCliente' => $p['telefono_cliente'] ?? $p['booking_phone'] ?? 'N/A',
                 'metodoPago'      => $p['payment_method'],
                 'idMercadoPago'   => $p['id_mercado_pago'],
+                'bookingId'       => $p['booking_id'],
+                'totalReserva'    => $p['booking_total'],
             ];
         }, $paymentsResult);
+
+        // Agregar pagos de Mercado Pago que no estén en la tabla payments
+        $mpBookings = $bookingsModel->select('bookings.date, bookings.payment, bookings.total, bookings.total_payment, bookings.payment_method, bookings.id, bookings.name as booking_name, bookings.phone as booking_phone, customers.name as customer_name, customers.phone as customer_phone')
+            ->join('customers', 'customers.id = bookings.id_customer', 'left')
+            ->join('payments', 'payments.id_booking = bookings.id', 'left')
+            ->where('bookings.date >=', $data->fechaDesde)
+            ->where('bookings.date <=', $data->fechaHasta)
+            ->where('bookings.mp', 1)
+            ->whereIn('bookings.payment_method', ['Mercado Pago', 'mercado_pago'])
+            ->where('payments.id', null)
+            ->findAll();
+
+        foreach ($mpBookings as $b) {
+            $monto = ($b['total_payment'] ?? 0) ? $b['total'] : $b['payment'];
+            $payments[] = [
+                'fecha'           => date("d/m/Y", strtotime($b['date'])),
+                'pago'            => $monto,
+                'usuario'         => 'CLIENTE',
+                'idUsuario'       => null,
+                'cliente'         => $b['customer_name'] ?? $b['booking_name'] ?? 'N/A',
+                'telefonoCliente' => $b['customer_phone'] ?? $b['booking_phone'] ?? 'N/A',
+                'metodoPago'      => 'mercado_pago',
+                'idMercadoPago'   => null,
+                'bookingId'       => $b['id'],
+                'totalReserva'    => $b['total'],
+            ];
+        }
+
+        // Agregar el pago de seña por Mercado Pago si existe y no está en payments
+        $mpReservations = $bookingsModel->select('bookings.date, bookings.reservation, bookings.total, bookings.total_payment, bookings.id, bookings.name as booking_name, bookings.phone as booking_phone, customers.name as customer_name, customers.phone as customer_phone')
+            ->join('customers', 'customers.id = bookings.id_customer', 'left')
+            ->join('payments as pmp', "pmp.id_booking = bookings.id AND pmp.payment_method = 'mercado_pago'", 'left')
+            ->where('bookings.date >=', $data->fechaDesde)
+            ->where('bookings.date <=', $data->fechaHasta)
+            ->where('bookings.mp', 1)
+            ->where('bookings.reservation >', 0)
+            ->where('bookings.reservation < bookings.total')
+            ->where('pmp.id', null)
+            ->findAll();
+
+        foreach ($mpReservations as $b) {
+            $payments[] = [
+                'fecha'           => date("d/m/Y", strtotime($b['date'])),
+                'pago'            => $b['reservation'],
+                'usuario'         => 'CLIENTE',
+                'idUsuario'       => null,
+                'cliente'         => $b['customer_name'] ?? $b['booking_name'] ?? 'N/A',
+                'telefonoCliente' => $b['customer_phone'] ?? $b['booking_phone'] ?? 'N/A',
+                'metodoPago'      => 'mercado_pago',
+                'idMercadoPago'   => null,
+                'bookingId'       => $b['id'],
+                'totalReserva'    => $b['total'],
+            ];
+        }
 
         // 4. Respuesta
         try {
@@ -262,6 +456,7 @@ class Bookings extends BaseController
     {
         $mercadoPagoModel = new MercadoPagoModel();
         $bookingsModel = new BookingsModel();
+        $bookingSlotsModel = new BookingSlotsModel();
         $data = $this->request->getJSON();
         $idBooking = $data->idBooking;
         $mpPayment = $mercadoPagoModel->where('id_booking', $idBooking)->first();
@@ -271,6 +466,10 @@ class Bookings extends BaseController
                 $mercadoPagoModel->update($mpPayment['id'], ['annulled' => 1]);
             }
             $bookingsModel->update($idBooking, ['annulled' => 1]);
+            $bookingSlotsModel->where('booking_id', $idBooking)
+                ->where('active', 1)
+                ->set(['active' => 0, 'status' => 'cancelled'])
+                ->update();
 
             return  $this->response->setJSON($this->setResponse(null, null, null, 'Respuesta exitosa'));
         } catch (\Exception $e) {
@@ -281,8 +480,15 @@ class Bookings extends BaseController
     public function editBooking()
     {
         $bookingsModel = new BookingsModel();
+        $bookingSlotsModel = new BookingSlotsModel();
         $data = $this->request->getJSON();
         $idBooking = $data->bookingId;
+        $db = \Config\Database::connect();
+
+        $currentBooking = $bookingsModel->getBooking($idBooking);
+        if (!$currentBooking) {
+            return $this->response->setJSON($this->setResponse(404, true, null, 'Reserva no encontrada.'));
+        }
 
         $queryUpdate = [
             'id_field' => $data->cancha,
@@ -293,13 +499,57 @@ class Bookings extends BaseController
             'total_payment' => $data->pagoTotal,
             'parcial' => $data->parcial,
             'total' => $data->total,
+            'locality' => $data->localidad ?? null,
+            'edited_by_user_id' => session()->get('id_user'),
+            'edited_by_name' => session()->get('name') ?? session()->get('user'),
+            'edited_at' => date('Y-m-d H:i:s'),
         ];
 
         try {
+            $changedSlot = $currentBooking['date'] != $data->fecha
+                || $currentBooking['id_field'] != $data->cancha
+                || $currentBooking['time_from'] != $data->horarioDesde
+                || $currentBooking['time_until'] != $data->horarioHasta;
+
+            $db->transBegin();
+
+            if ($changedSlot) {
+                $slotData = [
+                    'date' => $data->fecha,
+                    'id_field' => $data->cancha,
+                    'time_from' => $data->horarioDesde,
+                    'time_until' => $data->horarioHasta,
+                    'status' => 'confirmed',
+                    'active' => 1,
+                    'expires_at' => null,
+                    'created_at' => date('Y-m-d H:i:s'),
+                    'booking_id' => $idBooking,
+                ];
+
+                $slotId = $bookingSlotsModel->insert($slotData, true);
+                if (!$slotId) {
+                    $db->transRollback();
+                    return $this->response->setJSON($this->setResponse(409, true, null, 'El horario ya está ocupado o en proceso.'));
+                }
+            }
+
             $bookingsModel->update($idBooking, $queryUpdate);
+
+            if ($changedSlot) {
+                $bookingSlotsModel->where('booking_id', $idBooking)
+                    ->where('active', 1)
+                    ->where('id !=', $slotId)
+                    ->set(['active' => 0, 'status' => 'cancelled'])
+                    ->update();
+            }
+
+            $db->transCommit();
 
             return  $this->response->setJSON($this->setResponse(null, null, null, 'Respuesta exitosa'));
         } catch (\Exception $e) {
+            if ($db->transStatus() === false) {
+                $db->transRollback();
+            }
             return  $this->response->setJSON($this->setResponse(404, true, null, $e->getMessage()));
         }
     }
@@ -359,8 +609,15 @@ class Bookings extends BaseController
     public function saveAdminBooking()
     {
         $bookingsModel = new BookingsModel();
+        $bookingSlotsModel = new BookingSlotsModel();
+        $customersModel = new CustomersModel();
         $data = $this->request->getJSON();
+        $db = \Config\Database::connect();
         $pagoTotal = $data->monto == $data->total ? 1 : 0;
+
+        if ($this->isClosedForDateField($data->fecha, $data->cancha)) {
+            return $this->response->setJSON($this->setResponse(409, true, null, 'No se puede reservar: hay un cierre informado para esa fecha.'));
+        }
 
         $queryBooking = [
             'date'            => $data->fecha,
@@ -368,7 +625,8 @@ class Bookings extends BaseController
             'time_from'       => $data->horarioDesde,
             'time_until'      => $data->horarioHasta,
             'name'            => $data->nombre,
-            'phone'           => $data->codigoArea . $data->telefono,
+            'phone'           => $data->telefono,
+            'locality'        => $data->localidad ?? null,
             'payment'         => $data->monto,
             'total'           => $data->total,
             'description'     => $data->descripcion,
@@ -378,13 +636,61 @@ class Bookings extends BaseController
             'approved'        => 1,
             'mp'              => 1,
             'annulled'        => 0,
+            'created_by_type' => 'CREADO POR ADMIN',
+            'created_by_name' => session()->get('name') ?? session()->get('user'),
+            'created_by_user_id' => session()->get('id_user'),
         ];
 
         try {
-            $bookingsModel->insert($queryBooking);
+            $db->transBegin();
 
+            $slotData = [
+                'date' => $data->fecha,
+                'id_field' => $data->cancha,
+                'time_from' => $data->horarioDesde,
+                'time_until' => $data->horarioHasta,
+                'status' => 'confirmed',
+                'active' => 1,
+                'expires_at' => null,
+                'created_at' => date('Y-m-d H:i:s'),
+            ];
+
+            $slotId = $bookingSlotsModel->insert($slotData, true);
+            if (!$slotId) {
+                $db->transRollback();
+                return $this->response->setJSON($this->setResponse(409, true, null, 'El horario ya está ocupado o en proceso.'));
+            }
+
+            $bookingsModel->insert($queryBooking);
+            $bookingId = $bookingsModel->getInsertID();
+            $bookingSlotsModel->update($slotId, ['booking_id' => $bookingId]);
+
+            if (!empty($data->telefono)) {
+                $existingCustomer = $customersModel->where('phone', $data->telefono)->first();
+                $customerPayload = [
+                    'name' => $data->nombre,
+                    'phone' => $data->telefono,
+                    'offer' => 0,
+                    'city' => $data->localidad ?? null,
+                ];
+
+                if ($existingCustomer) {
+                    $customersModel->update($existingCustomer['id'], [
+                        'name' => $data->nombre,
+                        'city' => $data->localidad ?? null,
+                    ]);
+                } else {
+                    $customersModel->insert($customerPayload);
+                }
+            }
+
+            $db->transCommit();
+            $this->sendBookingEmail($bookingId);
             return  $this->response->setJSON($this->setResponse(null, null, null, 'Respuesta exitosa'));
         } catch (\Exception $e) {
+            if ($db->transStatus() === false) {
+                $db->transRollback();
+            }
             return  $this->response->setJSON($this->setResponse(404, true, null, $e->getMessage()));
         }
     }
@@ -397,7 +703,11 @@ class Bookings extends BaseController
         $fieldsModel = new FieldsModel();
 
         $booking = $bookingsModel->getBooking($bookingId);
+        if (!$booking) {
+            return $this->response->setStatusCode(404)->setBody('Reserva no encontrada.');
+        }
         $mpPayment = $mercadoPagoModel->where('id_booking', $bookingId)->first();
+        $mpPayment = $mpPayment ?? ['payment_id' => 'N/A', 'status' => 'N/A'];
 
         //Generar PDF
         $printData = [
@@ -411,10 +721,15 @@ class Bookings extends BaseController
             'total_cancha' => '$' . $booking['total'],
             'pagado' => '$' . $booking['payment'],
             'saldo' => '$' . $booking['diference'],
-            'detalle' => $booking['description'],
+            'detalle' => $booking['description'] ?? '',
         ];
 
-        $pdfLibrary->printBooking($printData);
+        $pdf = $pdfLibrary->renderBooking($printData);
+
+        return $this->response
+            ->setHeader('Content-Type', 'application/pdf')
+            ->setHeader('Content-Disposition', 'attachment; filename="' . $pdf['name'] . '"')
+            ->setBody($pdf['content']);
     }
 
     public function generateReportPdf($user, $fechaDesde, $fechaHasta)
@@ -422,9 +737,16 @@ class Bookings extends BaseController
         $usersModel = new UsersModel();
         $paymentsModel = new PaymentsModel();
         $customersModel = new CustomersModel();
+        $bookingsModel = new BookingsModel();
         $pdfLibrary = new PrintBookings();
 
-        $query = $paymentsModel->select('*')
+        $query = $paymentsModel->select('
+            payments.*,
+            bookings.payment as booking_payment,
+            bookings.total as booking_total,
+            bookings.total_payment as booking_total_payment
+        ')
+            ->join('bookings', 'bookings.id = payments.id_booking', 'left')
             ->where('date >=', $fechaDesde)
             ->where('date <=', $fechaHasta);
 
@@ -437,9 +759,13 @@ class Bookings extends BaseController
         $payments = [];
 
         foreach ($paymentsResult as $payment) {
+            $monto = $payment['amount'];
+            if ($payment['payment_method'] === 'mercado_pago') {
+                $monto = ($payment['booking_total_payment'] ?? 0) ? ($payment['booking_total'] ?? $payment['amount']) : ($payment['booking_payment'] ?? $payment['amount']);
+            }
             $pago = [
                 'fecha' => date("d/m/Y", strtotime($payment['date'])),
-                'pago' => $payment['amount'],
+                'pago' => $monto,
                 'usuario' => $usersModel->getUserName($payment['id_user']) || 'No informado',
                 'idUsuario' => $payment['id_user'],
                 'cliente' => $customersModel->getCustomerName($payment['id_customer']),
@@ -451,7 +777,74 @@ class Bookings extends BaseController
             array_push($payments, $pago);
         }
 
-        $pdfLibrary->printReports($payments);
+        $mpBookings = $bookingsModel->select('bookings.date, bookings.payment, bookings.total, bookings.total_payment, bookings.payment_method, bookings.id, bookings.name as booking_name, bookings.phone as booking_phone, customers.name as customer_name, customers.phone as customer_phone')
+            ->join('customers', 'customers.id = bookings.id_customer', 'left')
+            ->join('payments', 'payments.id_booking = bookings.id', 'left')
+            ->where('bookings.date >=', $fechaDesde)
+            ->where('bookings.date <=', $fechaHasta)
+            ->where('bookings.mp', 1)
+            ->whereIn('bookings.payment_method', ['Mercado Pago', 'mercado_pago'])
+            ->where('payments.id', null);
+
+        if ($user !== 'all') {
+            $mpBookings->where('bookings.created_by_user_id', $user);
+        }
+
+        $mpBookingsResult = $mpBookings->findAll();
+
+        foreach ($mpBookingsResult as $b) {
+            $monto = ($b['total_payment'] ?? 0) ? $b['total'] : $b['payment'];
+            $pago = [
+                'fecha' => date("d/m/Y", strtotime($b['date'])),
+                'pago' => $monto,
+                'usuario' => 'CLIENTE',
+                'idUsuario' => null,
+                'cliente' => $b['customer_name'] ?? $b['booking_name'] ?? 'N/A',
+                'telefonoCliente' => $b['customer_phone'] ?? $b['booking_phone'] ?? 'N/A',
+                'metodoPago' => 'mercado_pago',
+                'idMercadoPago' => null,
+            ];
+
+            array_push($payments, $pago);
+        }
+
+        $mpReservations = $bookingsModel->select('bookings.date, bookings.reservation, bookings.total, bookings.total_payment, bookings.id, bookings.name as booking_name, bookings.phone as booking_phone, customers.name as customer_name, customers.phone as customer_phone')
+            ->join('customers', 'customers.id = bookings.id_customer', 'left')
+            ->join('payments as pmp', "pmp.id_booking = bookings.id AND pmp.payment_method = 'mercado_pago'", 'left')
+            ->where('bookings.date >=', $fechaDesde)
+            ->where('bookings.date <=', $fechaHasta)
+            ->where('bookings.mp', 1)
+            ->where('bookings.reservation >', 0)
+            ->where('bookings.reservation < bookings.total')
+            ->where('pmp.id', null);
+
+        if ($user !== 'all') {
+            $mpReservations->where('bookings.created_by_user_id', $user);
+        }
+
+        $mpReservationsResult = $mpReservations->findAll();
+
+        foreach ($mpReservationsResult as $b) {
+            $pago = [
+                'fecha' => date("d/m/Y", strtotime($b['date'])),
+                'pago' => $b['reservation'],
+                'usuario' => 'CLIENTE',
+                'idUsuario' => null,
+                'cliente' => $b['customer_name'] ?? $b['booking_name'] ?? 'N/A',
+                'telefonoCliente' => $b['customer_phone'] ?? $b['booking_phone'] ?? 'N/A',
+                'metodoPago' => 'mercado_pago',
+                'idMercadoPago' => null,
+            ];
+
+            array_push($payments, $pago);
+        }
+
+        $pdf = $pdfLibrary->renderReports($payments);
+
+        return $this->response
+            ->setHeader('Content-Type', 'application/pdf')
+            ->setHeader('Content-Disposition', 'attachment; filename="' . $pdf['name'] . '"')
+            ->setBody($pdf['content']);
     }
 
     public function generatePaymentsReportPdf($fechaDesde, $fechaHasta)
@@ -485,7 +878,12 @@ class Bookings extends BaseController
             ];
         }
 
-        $pdfLibrary->printPaymentsReports($result);
+        $pdf = $pdfLibrary->renderPaymentsReports($result);
+
+        return $this->response
+            ->setHeader('Content-Type', 'application/pdf')
+            ->setHeader('Content-Disposition', 'attachment; filename="' . $pdf['name'] . '"')
+            ->setBody($pdf['content']);
     }
 
 

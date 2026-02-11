@@ -25,16 +25,39 @@ const selectEditField = document.getElementById('selectEditField')
 const editFieldDiv = document.getElementById('editFieldDiv')
 const selectEditFields = document.getElementById('selectEditFields')
 const adminTabs = new bootstrap.Tab(document.getElementById('nav-tab'))
+const toggleCancelReservations = document.getElementById('toggleCancelReservations')
+const cancelReservationsPanel = document.getElementById('cancelReservationsPanel')
+const cancelDateInput = document.getElementById('cancelDate')
+const cancelFieldSelect = document.getElementById('cancelField')
+const cancelReservationsResult = document.getElementById('cancelReservationsResult')
+const existingClosures = document.getElementById('existingClosures')
+const configPanel = document.getElementById('configPanel')
+const closureTextConfig = document.getElementById('closureTextConfig')
+const bookingEmailConfig = document.getElementById('bookingEmailConfig')
 let idBooking
 
-adminTabs._element.addEventListener("shown.bs.tab", (e) => {
-    enterFieldsForm.classList.add('d-none')
-    selectEditField.classList.add('d-none')
-})
+if (adminTabs && adminTabs._element) {
+    adminTabs._element.addEventListener("shown.bs.tab", (e) => {
+        if (enterFieldsForm) enterFieldsForm.classList.add('d-none')
+        if (selectEditField) selectEditField.classList.add('d-none')
+    })
+}
 
-selectEditField.addEventListener('change', async (e) => {
-    getEditField(selectEditFields.value)
-})
+if (cancelDateInput) {
+    const today = new Date().toISOString().split('T')[0]
+    cancelDateInput.value = today
+    if (cancelFieldSelect) {
+        refreshExistingClosures()
+    }
+}
+
+if (selectEditField) {
+    selectEditField.addEventListener('change', async (e) => {
+        if (selectEditFields) {
+            getEditField(selectEditFields.value)
+        }
+    })
+}
 
 
 document.addEventListener('click', async (e) => {
@@ -119,9 +142,75 @@ document.addEventListener('click', async (e) => {
         } else if (e.target.id == 'editarReservaModal') {
 
             editBookingModal.show()
+        } else if (e.target.id == 'toggleCancelReservations') {
+            if (cancelReservationsPanel) {
+                cancelReservationsPanel.classList.toggle('d-none')
+                if (!cancelReservationsPanel.classList.contains('d-none')) {
+                    refreshExistingClosures()
+                }
+            }
+        } else if (e.target.id == 'toggleConfigPanel') {
+            if (configPanel) {
+                configPanel.classList.toggle('d-none')
+            }
+        } else if (e.target.id == 'closeCancelReservations') {
+            if (cancelReservationsPanel) {
+                cancelReservationsPanel.classList.add('d-none')
+            }
+        } else if (e.target.id == 'closeConfigPanel') {
+            if (configPanel) {
+                configPanel.classList.add('d-none')
+            }
+        } else if (e.target.id == 'confirmCancelReservations') {
+            if (!cancelDateInput || !cancelFieldSelect) return
+            const payload = {
+                fecha: cancelDateInput.value,
+                cancha: cancelFieldSelect.value,
+            }
+            const force = e.target.dataset.force === '1'
+            if (!force) {
+                const result = await checkCancelReservations(payload)
+                if (!result) return
+                const bookings = result.bookings || []
+                if (bookings.length === 0) {
+                    await saveCancelReservations(payload)
+                } else {
+                    renderCancelReservationsResult(result)
+                }
+                return
+            }
+            await saveCancelReservations(payload)
+            await refreshExistingClosures()
+        } else if (e.target.id == 'saveConfigGeneral') {
+            const payload = {
+                textoCierre: closureTextConfig ? closureTextConfig.value : '',
+                emailReservas: bookingEmailConfig ? bookingEmailConfig.value : '',
+            }
+            await saveConfigGeneral(payload)
+            if (configPanel) {
+                configPanel.classList.add('d-none')
+            }
+        } else if (e.target.id == 'cancelCancelReservations') {
+            if (cancelReservationsResult) {
+                cancelReservationsResult.innerHTML = ''
+            }
+        }
+        const deleteBtn = e.target.closest('.delete-closure')
+        if (deleteBtn) {
+            const id = deleteBtn.dataset.id
+            if (!id) return
+            await deleteCancelReservation({ id })
+            await refreshExistingClosures()
         }
     }
 })
+
+if (cancelDateInput) {
+    cancelDateInput.addEventListener('change', refreshExistingClosures)
+}
+if (cancelFieldSelect) {
+    cancelFieldSelect.addEventListener('change', refreshExistingClosures)
+}
 
 async function editBooking(data) {
     try {
@@ -173,6 +262,211 @@ async function cancelBooking(data) {
     }
 }
 
+async function checkCancelReservations(data) {
+    try {
+        const response = await fetch(`${baseUrl}checkCancelReservations`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(data)
+        });
+
+        const responseData = await response.json();
+        if (responseData.error) {
+            alert(responseData.message || 'No se pudo verificar reservas.')
+            return null
+        }
+        return responseData.data
+    } catch (error) {
+        console.error('Error:', error);
+        throw error;
+    }
+}
+
+async function saveCancelReservations(data) {
+    try {
+        const response = await fetch(`${baseUrl}saveCancelReservations`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(data)
+        });
+
+        const responseData = await response.json();
+        if (!response.ok || responseData.error) {
+            alert(responseData.message || 'No se pudo guardar la cancelación.')
+            return
+        }
+
+        alert('Cancelación registrada con éxito')
+        if (cancelReservationsResult) {
+            cancelReservationsResult.innerHTML = ''
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        throw error;
+    }
+}
+
+async function getCancelReservations(data) {
+    try {
+        const response = await fetch(`${baseUrl}getCancelReservations`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(data)
+        });
+
+        const responseData = await response.json();
+        if (responseData.error) {
+            return []
+        }
+        return responseData.data || []
+    } catch (error) {
+        console.error('Error:', error);
+        return []
+    }
+}
+
+async function deleteCancelReservation(data) {
+    try {
+        const response = await fetch(`${baseUrl}deleteCancelReservation`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(data)
+        });
+
+        const responseData = await response.json();
+        if (!response.ok || responseData.error) {
+            alert(responseData.message || 'No se pudo eliminar el cierre.')
+            return
+        }
+    } catch (error) {
+        console.error('Error:', error);
+    }
+}
+
+async function refreshExistingClosures() {
+    if (!cancelDateInput || !existingClosures) return
+    const payload = {
+        fecha: cancelDateInput.value,
+        cancha: cancelFieldSelect ? cancelFieldSelect.value : 'all',
+    }
+    const rows = await getCancelReservations(payload)
+    if (!rows || rows.length === 0) {
+        existingClosures.innerHTML = ''
+        return
+    }
+    const formatDate = (dateStr) => {
+        if (!dateStr || typeof dateStr !== 'string' || !dateStr.includes('-')) return dateStr || ''
+        const [y, m, d] = dateStr.split('-')
+        if (!y || !m || !d) return dateStr
+        return `${d}/${m}/${y}`
+    }
+    existingClosures.innerHTML = `
+        <div class="alert alert-info mb-2">Cierres informados para esta fecha/cancha</div>
+        <ul class="list-group">
+            ${rows.map(r => `
+                <li class="list-group-item d-flex justify-content-between align-items-center">
+                    <span>${formatDate(r.cancel_date)} - ${r.field_label} (por ${r.user_name})</span>
+                    <button type="button" class="btn btn-sm btn-outline-danger delete-closure" data-id="${r.id}">Cancelar</button>
+                </li>
+            `).join('')}
+        </ul>
+    `
+}
+
+async function saveConfigGeneral(data) {
+    try {
+        const response = await fetch(`${baseUrl}saveConfigGeneral`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(data)
+        });
+
+        const responseData = await response.json();
+        if (!response.ok || responseData.error) {
+            alert(responseData.message || 'No se pudo guardar la configuración.')
+            return
+        }
+
+        alert('Configuración guardada con éxito')
+    } catch (error) {
+        console.error('Error:', error);
+        throw error;
+    }
+}
+
+function renderCancelReservationsResult(result, payload) {
+    if (!cancelReservationsResult) return
+    if (!result) {
+        cancelReservationsResult.innerHTML = ''
+        return
+    }
+
+    const bookings = result.bookings || []
+    let html = ''
+    const formatDate = (dateStr) => {
+        if (!dateStr || typeof dateStr !== 'string' || !dateStr.includes('-')) return dateStr || ''
+        const [y, m, d] = dateStr.split('-')
+        if (!y || !m || !d) return dateStr
+        return `${d}/${m}/${y}`
+    }
+    const fechaLabel = formatDate(result.fecha)
+
+    if (bookings.length > 0) {
+        html += `
+            <div class="alert alert-warning">
+                Se encontraron reservas para ${fechaLabel} (${result.canchaLabel}). Revisá antes de informar el cierre.
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th>Nombre</th>
+                            <th>Teléfono</th>
+                            <th>Cancha</th>
+                            <th>Horario</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${bookings.map(b => `
+                            <tr>
+                                <td>${b.nombre}</td>
+                                <td>${b.telefono}</td>
+                                <td>${b.cancha}</td>
+                                <td>${b.horario}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `
+    } else {
+        html += `
+            <div class="alert alert-success">
+                No hay reservas para ${fechaLabel} (${result.canchaLabel}).
+            </div>
+        `
+    }
+
+    html += `
+        <div class="d-flex gap-2">
+            <button type="button" class="btn btn-primary" id="confirmCancelReservations" data-force="1">Aceptar igual</button>
+            <button type="button" class="btn btn-secondary" id="cancelCancelReservations">Cancelar</button>
+        </div>
+    `
+
+    cancelReservationsResult.innerHTML = html
+}
+
 async function completePayment(url, data) {
     try {
         const response = await fetch(url, {
@@ -196,9 +490,13 @@ async function completePayment(url, data) {
                     <i class="fa-regular fa-circle-check fa-2xl" style="margin-bottom: 20px;"></i>
                 </div>`
 
-                setTimeout(() => { modalResultPayment.show() }, 2000)
-                setTimeout(() => { spinnerCompletarPago.hide() }, 2000)
-                setTimeout(() => { location.reload(true) }, 3000)
+                setTimeout(() => { modalResultPayment.show() }, 1000)
+                setTimeout(() => { spinnerCompletarPago.hide() }, 1200)
+                setTimeout(() => { modalResultPayment.hide() }, 2500)
+
+                if (typeof getActiveBookings === 'function' && typeof bookingData !== 'undefined') {
+                    getActiveBookings(bookingData)
+                }
 
             } else {
                 setTimeout(() => { spinnerCompletarPago.show() }, 500)
@@ -212,7 +510,6 @@ async function completePayment(url, data) {
 
                 setTimeout(() => { modalResultPayment.show() }, 2000)
                 setTimeout(() => { spinnerCompletarPago.hide() }, 2000)
-                setTimeout(() => { location.reload(true) }, 3000)
             }
 
         } else {
@@ -322,7 +619,7 @@ function fillDiv(field) {
 
     div = `
         <div class="editFields" id="editFields">
-            <form action="${baseUrl}editField/${field.id}" method="POST">
+            <form action="${webBaseUrl}editField/${field.id}" method="POST">
 
                 <div class="form-check form-switch mt-4">
                     <input class="form-check-input" type="checkbox" role="switch" name="disabled" id="disableField" ${disabledCheck}>
@@ -365,7 +662,7 @@ function fillDiv(field) {
                 </div>
 
                 <button type="submit" class="btn btn-success">Guardar</button>
-                <a href="${baseUrl}" type="button" class="btn btn-danger">Cancelar</a>
+                <a href="${webBaseUrl}" type="button" class="btn btn-danger">Cancelar</a>
             </form>
         </div>
         `

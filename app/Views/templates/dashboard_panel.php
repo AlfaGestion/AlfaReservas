@@ -4,6 +4,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="app-base-url" content="<?= env('app.apiBaseURL', base_url()) ?>">
+    <meta name="app-web-base-url" content="<?= base_url() ?>">
     <?php echo $this->renderSection('title') ?>
     <title>Home</title>
 

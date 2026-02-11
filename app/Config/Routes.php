@@ -31,8 +31,10 @@ $routes->set404Override();
 // route since we don't have to scan directories.
 $routes->get('/', 'Home::index');
 $routes->post('formInfo', 'Home::infoReserva');
+$routes->post('checkClosure', 'Home::checkClosure');
 $routes->get('getDataMp', 'Home::getDataMp');
 $routes->get('deleteRejected', 'Home::deleteRejected');
+$routes->get('phpinfo', 'Debug::phpinfo');
 
 $routes->post('setPreference', 'MercadoPago::setPreference');
 $routes->post('savePreferenceIds', 'MercadoPago::savePreferenceIds');
@@ -83,6 +85,11 @@ $routes->group('', ['filter' => 'auth'], function ($routes) {
     $routes->post('editField/(:any)', 'Superadmin::editField/$1');
     $routes->post('getActiveBookings', 'Superadmin::getActiveBookings');
     $routes->post('getAnnulledBookings', 'Superadmin::getAnnulledBookings');
+    $routes->post('checkCancelReservations', 'Superadmin::checkCancelReservations');
+    $routes->post('saveCancelReservations', 'Superadmin::saveCancelReservations');
+    $routes->post('getCancelReservations', 'Superadmin::getCancelReservations');
+    $routes->post('deleteCancelReservation', 'Superadmin::deleteCancelReservation');
+    $routes->post('saveConfigGeneral', 'Superadmin::saveConfigGeneral');
     $routes->post('deleteUser/(:any)', 'Superadmin::deleteUser/$1');
 
     $routes->post('saveTime', 'Time::saveTime');

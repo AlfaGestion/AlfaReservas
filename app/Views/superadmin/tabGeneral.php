@@ -3,8 +3,8 @@
         <a type="button" href="<?= base_url('auth/register') ?>" class="btn btn-success mt-2 mb-2" id=""><i class="fa-solid fa-user-plus me-1"></i>Crear usuario</a>
         <button type="button" class="btn btn-warning mt-2 mb-2" id="openRateModal" data-bs-toggle="modal" data-bs-target="#rateModal"><i class="fa-solid fa-percent me-1"></i>Editar porcentaje de reserva</button>
         <button type="button" class="btn btn-primary mt-2 mb-2" id="openOfferRateModal" data-bs-toggle="modal" data-bs-target="#offerRateModal"><i class="fa-solid fa-percent me-1"></i>Editar porcentaje de oferta</button>
-        <a href="<?= base_url('upload') ?>" type="button" class="btn btn-info mt-2 mb-2" id=""><i class="fa-solid fa-file-arrow-up me-1"></i>Cambiar fondo</a>
-        <a href="<?= base_url('configMpView') ?>" type="button" class="btn btn-light mt-2 mb-2" id=""><img src="<?= base_url(PUBLIC_FOLDER . 'assets/images/mercado-pago.jfif') ?>" alt="Icono Mercado Pago" width="10%" height="5%">Configurar Mercado Pago</a>
+        <button type="button" class="btn btn-outline-dark mt-2 mb-2" id="toggleConfigPanel"><i class="fa-solid fa-gear me-1"></i>Configuración</button>
+        <button type="button" class="btn btn-outline-secondary mt-2 mb-2" id="toggleCancelReservations"><i class="fa-solid fa-calendar-xmark me-1"></i>Informar cierre</button>
     <?php endif; ?>
 
 </div>
@@ -87,6 +87,49 @@
 
 
 <?php if (session()->superadmin) : ?>
+    <div class="card mt-3 d-none" id="configPanel">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h6 class="mb-0">Configuración</h6>
+                <button type="button" class="btn-close" aria-label="Close" id="closeConfigPanel"></button>
+            </div>
+            <ul class="nav nav-tabs" id="configTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="config-mp-tab" data-bs-toggle="tab" data-bs-target="#config-mp" type="button" role="tab">Mercado Pago</button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="config-fondo-tab" data-bs-toggle="tab" data-bs-target="#config-fondo" type="button" role="tab">Fondo</button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="config-general-tab" data-bs-toggle="tab" data-bs-target="#config-general" type="button" role="tab">General</button>
+                </li>
+            </ul>
+
+            <div class="tab-content pt-3">
+                <div class="tab-pane fade show active" id="config-mp" role="tabpanel">
+                    <a href="<?= base_url('configMpView') ?>" type="button" class="btn btn-light">
+                        <img src="<?= base_url(PUBLIC_FOLDER . 'assets/images/mercado-pago.jfif') ?>" alt="Icono Mercado Pago" width="10%" height="5%"> Configurar Mercado Pago
+                    </a>
+                </div>
+                <div class="tab-pane fade" id="config-fondo" role="tabpanel">
+                    <a href="<?= base_url('upload') ?>" type="button" class="btn btn-info"><i class="fa-solid fa-file-arrow-up me-1"></i>Cambiar fondo</a>
+                </div>
+                <div class="tab-pane fade" id="config-general" role="tabpanel">
+                    <div class="form-floating mb-3">
+                        <textarea class="form-control" id="closureTextConfig" style="height: 160px" placeholder="Texto de cierre"><?= isset($closureText) ? $closureText : '' ?></textarea>
+                        <label for="closureTextConfig">Texto de cierre (usar &lt;fecha&gt;)</label>
+                        <div class="form-text">Si escribís &lt;fecha&gt; se reemplaza por la fecha (dd/mm/yyyy).</div>
+                    </div>
+                    <div class="form-floating mb-3">
+                        <input type="email" class="form-control" id="bookingEmailConfig" placeholder="Email para reservas" value="<?= isset($bookingEmail) ? $bookingEmail : '' ?>">
+                        <label for="bookingEmailConfig">Email para enviar reservas</label>
+                    </div>
+                    <button type="button" class="btn btn-success" id="saveConfigGeneral">Guardar configuración</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="table-responsive-sm" id="tableCustomers">
         <table class="table align-middle table-striped-columns mt-2">
             <thead>
@@ -113,5 +156,45 @@
                 <?php endforeach; ?>
             </tbody>
         </table>
+    </div>
+
+    <div class="card mt-4 d-none" id="cancelReservationsPanel">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Informar cierre</h5>
+                <button type="button" class="btn-close" aria-label="Close" id="closeCancelReservations"></button>
+            </div>
+
+            <div class="mt-3">
+                <div class="row g-2">
+                    <div class="col-sm-6">
+                        <div class="form-floating">
+                            <input type="date" class="form-control" id="cancelDate">
+                            <label for="cancelDate">Fecha</label>
+                        </div>
+                    </div>
+                    <div class="col-sm-6">
+                        <div class="form-floating">
+                            <select class="form-select" id="cancelField" aria-label="Cancha">
+                                <option value="all">Todas</option>
+                                <?php if (!empty($fields)) : ?>
+                                    <?php foreach ($fields as $field) : ?>
+                                        <option value="<?= $field['id'] ?>"><?= $field['name'] ?></option>
+                                    <?php endforeach; ?>
+                                <?php endif; ?>
+                            </select>
+                            <label for="cancelField">Cancha</label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-3 d-flex gap-2">
+                    <button type="button" class="btn btn-primary" id="confirmCancelReservations">Aceptar</button>
+                </div>
+
+                <div id="cancelReservationsResult" class="mt-3"></div>
+                <div id="existingClosures" class="mt-3"></div>
+            </div>
+        </div>
     </div>
 <?php endif; ?>

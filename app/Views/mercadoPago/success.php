@@ -20,24 +20,35 @@ $fieldsModel = new FieldsModel()
 </head>
 
 <body>
-    <div class=" d-flex align-items-center justify-content-center flex-column">
+    <div class="page">
         <div class="div-principal d-flex justify-content-center align-items-center flex-column">
-            <h4 class="mb-5">Reserva confirmada!</h4>
-            <i class="fa-regular fa-circle-check fa-2xl"></i>
-            <a class="mt-4" href="<?= base_url() ?>">Volver a la pantalla principal</a>
-            <a class="mt-4" href="<?= base_url('bookingPdf/' . $bookingId) ?>">Descargar detalle de la reserva en PDF</a>
+            <h4 class="status-title">Reserva confirmada!</h4>
+            <i class="fa-regular fa-circle-check status-icon"></i>
         </div>
 
         <div class="result">
             <div class="header d-flex align-items-center justify-content-center flex-column">
+                <div class="brand">
+                    <img src="<?= base_url(PUBLIC_FOLDER . "assets/images/logo.png") ?>" alt="Logo">
+                </div>
                 <h5 class="text-center">Detalle de la reserva</h5>
             </div>
 
             <hr>
+            <?php
+            $fechaReserva = $booking['date'];
+            $fechaReservaFormateada = $fechaReserva;
+            if (!empty($fechaReserva) && strpos($fechaReserva, '-') !== false) {
+                $dt = DateTime::createFromFormat('Y-m-d', $fechaReserva);
+                if ($dt) {
+                    $fechaReservaFormateada = $dt->format('d/m/Y');
+                }
+            }
+            ?>
             <ul>
                 <li><strong>Nombre:</strong> <?= $booking['name'] ?></li>
                 <li><strong>Teléfono:</strong> <?= $booking['phone'] ?></li>
-                <li><strong>Fecha:</strong> <?= $booking['date'] ?></li>
+                <li><strong>Fecha:</strong> <?= $fechaReservaFormateada ?></li>
                 <li><strong>Horario:</strong> <?= $booking['time_from'] . 'hs' . ' ' . $booking['time_until'] . 'hs' ?></li>
                 <li><strong>Cancha:</strong> <?= $fieldsModel->getField($booking['id_field'])['name'] ?></li>
                 <hr>
@@ -51,6 +62,11 @@ $fieldsModel = new FieldsModel()
             </ul>
             <hr>
 
+        </div>
+
+        <div class="cta-row cta-row-bottom">
+            <a class="cta-link cta-secondary" href="<?= base_url() ?>">Volver a la pantalla principal</a>
+            <a class="cta-link cta-primary" href="<?= base_url('bookingPdf/' . $bookingId) ?>">Descargar detalle de la reserva en PDF</a>
         </div>
     </div>
 </body>

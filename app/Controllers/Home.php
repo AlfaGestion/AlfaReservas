@@ -3,8 +3,12 @@
 namespace App\Controllers;
 
 use App\Models\BookingsModel;
+use App\Models\BookingSlotsModel;
 use App\Models\CustomersModel;
+use App\Models\CancelReservationsModel;
+use App\Models\ConfigModel;
 use App\Models\FieldsModel;
+use App\Models\LocalitiesModel;
 use App\Models\MercadoPagoModel;
 use App\Models\OffersModel;
 use App\Models\TimeModel;
@@ -38,6 +42,9 @@ class Home extends BaseController
 
         $fieldsModel = new FieldsModel();
         $fields = $fieldsModel->where('disabled', 0)->findAll();
+
+        $localitiesModel = new LocalitiesModel();
+        $localities = $localitiesModel->orderBy('name', 'ASC')->findAll();
 
         // dd($fields);
 
@@ -74,7 +81,7 @@ class Home extends BaseController
         //     }
         // }
 
-        return view('index', ['fields' => $fields, 'time' => $openingTime, 'oferta' => $oferta, 'esDomingo' => $isSunday]);
+        return view('index', ['fields' => $fields, 'time' => $openingTime, 'oferta' => $oferta, 'esDomingo' => $isSunday, 'localities' => $localities]);
     }
 
     // public function deleteRejected()
@@ -98,10 +105,18 @@ class Home extends BaseController
         $mercadoPagoModel = new MercadoPagoModel();
         // Necesitas cargar el modelo de la tabla que causa el error
         $paymentsModel = new \App\Models\PaymentsModel();
+        $bookingSlotsModel = new BookingSlotsModel();
 
         $nueva_hora = date("Y-m-d H:i:s", strtotime("-5 minutes"));
 
         try {
+            // Expira slots pendientes vencidos
+            $bookingSlotsModel->where('active', 1)
+                ->where('status', 'pending')
+                ->where('expires_at <', date('Y-m-d H:i:s'))
+                ->set(['active' => 0, 'status' => 'expired'])
+                ->update();
+
             // 1. Buscamos las reservas candidatas
             $bookingsCandidates = $bookingsModel->groupStart()
                 ->where('approved', 0)
@@ -127,6 +142,12 @@ class Home extends BaseController
 
             if (!empty($idsToDelete)) {
                 // ORDEN DE BORRADO (Hijos primero, Padre al final)
+
+                // 0. Expirar slots de esas reservas
+                $bookingSlotsModel->whereIn('booking_id', $idsToDelete)
+                    ->where('active', 1)
+                    ->set(['active' => 0, 'status' => 'expired'])
+                    ->update();
 
                 // 1. Borrar de la tabla 'payments' (la que dio el error ahora)
                 $paymentsModel->whereIn('id_booking', $idsToDelete)->delete();
@@ -158,7 +179,7 @@ class Home extends BaseController
             'horarioHasta' => $data->horarioHasta,
             'nombre'       => $data->nombre,
             'telefono'     => $data->telefono,
-            'codigoArea'   => $data->codigoArea,
+            'localidad'    => $data->localidad ?? null,
         ];
 
         try {
@@ -166,6 +187,111 @@ class Home extends BaseController
         } catch (\Exception $e) {
             return  $this->response->setJSON($this->setResponse(404, true, null, $e->getMessage()));
         }
+    }
+
+    public function checkClosure()
+    {
+        $data = $this->request->getJSON();
+        $date = $data->fecha ?? null;
+        $field = $data->cancha ?? 'all';
+
+        if (!$date) {
+            return $this->response->setJSON($this->setResponse(400, true, null, 'Debe ingresar una fecha.'));
+        }
+
+        $cancelModel = new CancelReservationsModel();
+        $fieldsModel = new FieldsModel();
+        $configModel = new ConfigModel();
+
+        $closures = $cancelModel->where('cancel_date', $date)->findAll();
+        $closureTextRow = $configModel->where('clave', 'texto_cierre')->first();
+        $closureText = $closureTextRow['valor'] ?? '';
+        if (!is_string($closureText) || trim($closureText) === '') {
+            $closureText = "Aviso importante\n\n"
+                . "Queremos informarles que el día <fecha> las canchas permanecerán cerradas.\n"
+                . "Pedimos disculpas por las molestias que esto pueda ocasionar.\n\n"
+                . "De todas formas, ya pueden reservar normalmente las horas para fechas posteriores.\n"
+                . "Muchas gracias por la comprensión y por seguir eligiéndonos.";
+        }
+        if (empty($closures)) {
+            return $this->response->setJSON($this->setResponse(null, null, [
+                'closed' => false,
+                'scope' => 'none',
+                'closedAll' => false,
+                'closedFields' => [],
+                'label' => '',
+                'fecha' => $date,
+                'message' => $closureText,
+            ], 'Respuesta exitosa'));
+        }
+
+        $closedAll = false;
+        $closedField = false;
+        $fieldLabel = '';
+        $closedFields = [];
+
+        foreach ($closures as $c) {
+            if (empty($c['field_id'])) {
+                $closedAll = true;
+            }
+            if (!empty($c['field_id'])) {
+                $closedFields[] = (int)$c['field_id'];
+            }
+            if ($field !== 'all' && !empty($c['field_id']) && (int)$c['field_id'] === (int)$field) {
+                $closedField = true;
+                $fieldLabel = $c['field_label'] ?? '';
+            }
+        }
+
+        if ($field === 'all') {
+            return $this->response->setJSON($this->setResponse(null, null, [
+                'closed' => $closedAll,
+                'scope' => $closedAll ? 'all' : 'none',
+                'closedAll' => $closedAll,
+                'closedFields' => $closedFields,
+                'label' => 'Todas',
+                'fecha' => $date,
+                'message' => $closureText,
+            ], 'Respuesta exitosa'));
+        }
+
+        if ($closedAll) {
+            return $this->response->setJSON($this->setResponse(null, null, [
+                'closed' => true,
+                'scope' => 'all',
+                'closedAll' => true,
+                'closedFields' => $closedFields,
+                'label' => 'Todas',
+                'fecha' => $date,
+                'message' => $closureText,
+            ], 'Respuesta exitosa'));
+        }
+
+        if ($closedField) {
+            if ($fieldLabel === '') {
+                $fieldLabel = $fieldsModel->getField($field)['name'] ?? 'N/D';
+            }
+            return $this->response->setJSON($this->setResponse(null, null, [
+                'closed' => true,
+                'scope' => 'field',
+                'closedAll' => false,
+                'closedFields' => $closedFields,
+                'fieldId' => (int)$field,
+                'label' => $fieldLabel,
+                'fecha' => $date,
+                'message' => $closureText,
+            ], 'Respuesta exitosa'));
+        }
+
+        return $this->response->setJSON($this->setResponse(null, null, [
+            'closed' => false,
+            'scope' => 'none',
+            'closedAll' => false,
+            'closedFields' => $closedFields,
+            'label' => '',
+            'fecha' => $date,
+            'message' => $closureText,
+        ], 'Respuesta exitosa'));
     }
 
 

@@ -14,7 +14,12 @@
  | existing namespaces of App\* namespaced-classes.
  */
 defined('APP_NAMESPACE') || define('APP_NAMESPACE', 'App');
-defined('PUBLIC_FOLDER') || define('PUBLIC_FOLDER', 'public/');
+defined('PUBLIC_FOLDER') || define(
+    'PUBLIC_FOLDER',
+    (PHP_SAPI === 'cli-server')
+        ? ''
+        : 'public/'
+);
 
 /*
  | --------------------------------------------------------------------------

@@ -4,6 +4,17 @@ const inputHastaBooking = document.getElementById('fechaHastaBooking')
 let bookingData = {}
 let bookingId = ''
 
+function formatDateTime(dateTime) {
+    if (!dateTime) return ''
+    const parts = dateTime.split(' ')
+    const datePart = parts[0] || ''
+    const timePart = parts[1] || ''
+    const dateBits = datePart.split('-')
+    if (dateBits.length !== 3) return dateTime
+    const formattedDate = `${dateBits[2]}/${dateBits[1]}/${dateBits[0]}`
+    return timePart ? `${formattedDate} ${timePart}` : formattedDate
+}
+
 document.addEventListener('DOMContentLoaded', async (e) => {
     const fechaActual = new Date().toISOString().split('T')[0]
     inputDesdeBooking.value = fechaActual
@@ -131,7 +142,20 @@ async function fillTableBookings(data) {
     let anular = ''
     let state = ''
 
+    const pendientes = []
+    const finalizadas = []
+
     data.forEach(reserva => {
+        if (reserva.anulada == 0 && reserva.pago_total === 'Si') {
+            finalizadas.push(reserva)
+        } else {
+            pendientes.push(reserva)
+        }
+    })
+
+    const ordered = pendientes.concat(finalizadas)
+
+    ordered.forEach(reserva => {
 
         if (reserva.mp == 0) {
             if (existPending == false) {
@@ -145,7 +169,7 @@ async function fillTableBookings(data) {
 
         if (sessionUserSuperadmin == 1) {
             edit = `
-            <li><button type="button" class="btn btn-primary dropdown-item" id="editarReservaModal" data-id="${reserva.id}">Editar reserva</button></li>
+            <li><button type="button" class="btn btn-primary dropdown-item" id="editarReservaBtn" data-id="${reserva.id}" data-bs-toggle="modal" data-bs-target="#editarReservaModal">Editar reserva</button></li>
             `
             if (reserva.anulada == 0) {
                 anular = `
@@ -227,13 +251,18 @@ async function fillTableBookings(data) {
 
         // console.log(typeof reserva.descripcion)
 
+        const editInfo = reserva.editado_por ? `<br><small>Editado por: ${reserva.editado_por}${reserva.editado_en ? ' (' + formatDateTime(reserva.editado_en) + ')' : ''}</small>` : ''
+
+        const rowClass = (reserva.anulada == 0 && reserva.pago_total === 'Si') ? 'booking-finalizada' : ''
+
         tr += `
-        <tr >
+        <tr class="${rowClass}">
             <td>${reserva.fecha}</th>
             <td>${reserva.cancha}</td>
             <td>${reserva.horario}</td>
             <td>${reserva.nombre}</td>
             <td>${reserva.telefono}</td>
+            <td>${reserva.creado_por || 'N/D'}${editInfo}</td>
             <td>${reserva.pago_total}</td>
             <td>${reserva.monto_reserva}</td>
             <td>${reserva.total_reserva}</td>

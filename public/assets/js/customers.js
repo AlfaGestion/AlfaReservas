@@ -128,8 +128,8 @@ async function fillCustomersTable(data) {
                     Acciones
                 </button>
                 <ul class="dropdown-menu">
-                    <li><a type="button" href="${baseUrl}customers/editWindow/${customer.id}) ?>" class="btn btn-primary dropdown-item" id="" data-id="${customer.id}">Editar cliente</a></li>
-                    <li><a type="button" href="${baseUrl}customers/deleteCustomer/${customer.id}}) ?>" class="btn btn-primary dropdown-item" id="" data-id="${customer.id}">Eliminar cliente</a></li>
+                    <li><a type="button" href="${webBaseUrl}customers/editWindow/${customer.id}) ?>" class="btn btn-primary dropdown-item" id="" data-id="${customer.id}">Editar cliente</a></li>
+                    <li><a type="button" href="${webBaseUrl}customers/deleteCustomer/${customer.id}}) ?>" class="btn btn-primary dropdown-item" id="" data-id="${customer.id}">Eliminar cliente</a></li>
                 </ul>
             </div>
             `
@@ -158,8 +158,8 @@ async function fillCustomersTable(data) {
                     Acciones
                 </button>
                 <ul class="dropdown-menu">
-                    <li><a type="button" href="${baseUrl}customers/editWindow/${data.id}) ?>" class="btn btn-primary dropdown-item" id="" data-id="${data.id}">Editar cliente</a></li>
-                    <li><a type="button" href="${baseUrl}customers/deleteCustomer/${data.id}}) ?>" class="btn btn-primary dropdown-item" id="" data-id="${data.id}">Eliminar cliente</a></li>
+                    <li><a type="button" href="${webBaseUrl}customers/editWindow/${data.id}) ?>" class="btn btn-primary dropdown-item" id="" data-id="${data.id}">Editar cliente</a></li>
+                    <li><a type="button" href="${webBaseUrl}customers/deleteCustomer/${data.id}}) ?>" class="btn btn-primary dropdown-item" id="" data-id="${data.id}">Eliminar cliente</a></li>
                 </ul>
             </div>
             `

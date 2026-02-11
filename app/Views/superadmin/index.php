@@ -36,11 +36,11 @@
             <div class="tab-content" id="nav-tabContent">
 
                 <div class="tab-pane fade  show active" id="nav-bookings" role="tabpanel" aria-labelledby="nav-bookings-tab" tabindex="0">
-                    <?= view('superadmin/tabBookings', ['bookings' => $bookings]) ?>
+                    <?= view('superadmin/tabBookings', ['bookings' => $bookings, 'localities' => $localities]) ?>
                 </div>
 
                 <div class="tab-pane fade" id="nav-general" role="tabpanel" aria-labelledby="nav-general-tab" tabindex="0">
-                    <?= view('superadmin/tabGeneral', ['users' => $users]) ?>
+                    <?= view('superadmin/tabGeneral', ['users' => $users, 'fields' => $fields]) ?>
                 </div>
 
                 <div class="tab-pane fade" id="nav-fields" role="tabpanel" aria-labelledby="nav-fields-tab" tabindex="0">
@@ -105,6 +105,7 @@
                 </div>
             </div>
             <div class="modal-footer">
+                <button type="button" class="btn btn-outline-primary" id="printReport">Imprimir</button>
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Volver</button>
             </div>
         </div>
@@ -127,7 +128,7 @@
 
 <?php echo $this->section('scripts') ?>
 <script src="<?= base_url(PUBLIC_FOLDER . "assets/js/abmSuperadmin.js") ?>"></script>
-<script src="<?= base_url(PUBLIC_FOLDER . "assets/js/searchReports.js") ?>"></script>
+<script src="<?= base_url(PUBLIC_FOLDER . "assets/js/searchReports.js?v=" . filemtime(FCPATH . "assets/js/searchReports.js")) ?>"></script>
 <script src="<?= base_url(PUBLIC_FOLDER . "assets/js/searchBookings.js") ?>"></script>
 <script src="<?= base_url(PUBLIC_FOLDER . "assets/js/customers.js") ?>"></script>
 <script src="<?= base_url(PUBLIC_FOLDER . "assets/js/editReserva.js") ?>"></script>

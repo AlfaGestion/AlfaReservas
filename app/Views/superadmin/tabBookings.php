@@ -161,15 +161,27 @@
                     <label for="telefono">Teléfono</label>
                 </div>
 
+                <div class="form-floating flex-nowrap mb-3">
+                    <input type="text" class="form-control" name="localidad" id="localidad" placeholder="Ingrese la localidad" aria-label="localidad" autocomplete="off" spellcheck="false">
+                    <label for="localidad">Localidad</label>
+                </div>
 
                 <div class="form-floating flex-nowrap mb-3">
-                    <input type="text" class="form-control" name="nombre" id="nombre" placeholder="Ingrese el nombre" aria-label="name" disabled>
-                    <label for="nombre">Nombre</label>
+                    <input type="text" class="form-control" name="nombre" id="nombre" placeholder="Ingrese el nombre y apellido" aria-label="name" disabled>
+                    <label for="nombre">Nombre y apellido</label>
                 </div>
+
+                <datalist id="localitiesListAdmin">
+                    <?php if (!empty($localities)) : ?>
+                        <?php foreach ($localities as $loc) : ?>
+                            <option value="<?= $loc['name'] ?>"></option>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </datalist>
 
 
                 <button type="button" class="btn btn-success" id="actualizarReserva">Actualizar reserva</button>
-                <button type="button" class="btn btn-danger" id="cancelarReserva">Cancelar</button>
+                <button type="button" class="btn btn-danger" id="cancelarReservaEdit">Cancelar</button>
             </div>
 
         </div>
@@ -199,6 +211,7 @@
                 <th scope="col">Horario</th>
                 <th scope="col">Nombre</th>
                 <th scope="col">Teléfono</th>
+                <th scope="col">Creado por</th>
                 <th scope="col">Pagó total</th>
                 <th scope="col">Pagado</th>
                 <th scope="col">Total</th>

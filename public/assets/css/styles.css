@@ -90,6 +90,28 @@ select {
     margin: 10px 0;
 }
 
+.booking-finalizada {
+    background-color: #eaf7ee;
+}
+
+.report-summary {
+    cursor: pointer;
+}
+
+.report-detail-box {
+    background: #f7faf8;
+    border: 1px solid #e3e9e6;
+    padding: 10px 12px;
+    border-radius: 8px;
+    display: grid;
+    gap: 6px;
+}
+
+.report-detail-list {
+    display: grid;
+    gap: 4px;
+}
+
 .offerTitle {
     font-family:'Gill Sans', 'Gill Sans MT', Calibri, 'Trebuchet MS', sans-serif;
     font-weight: 900;

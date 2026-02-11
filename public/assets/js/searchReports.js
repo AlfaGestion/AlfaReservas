@@ -10,6 +10,7 @@ const switchPaymentsMp = document.getElementById('checkPaymetsMp')
 const reservePaymentsButton = document.getElementById('reservePayments')
 const searchReportsButton = document.getElementById('searchReports')
 const selectDateRange = document.getElementById('selectDateRange')
+const printReportButton = document.getElementById('printReport')
 
 document.addEventListener('DOMContentLoaded', (e) => {
     const fechaActual = new Date();
@@ -156,7 +157,7 @@ document.addEventListener('click', async (e) => {
             const idUser = selectUser.value == '' ? 'all' : selectUser.value
 
             const a = document.createElement("a")
-            a.href = `${baseUrl}generateReportPdf/${idUser}/${buscarFechaDesde}/${buscarFechaHasta}`
+            a.href = `${webBaseUrl}generateReportPdf/${idUser}/${buscarFechaDesde}/${buscarFechaHasta}`
             a.target = "_blank"
             a.click()
 
@@ -166,9 +167,71 @@ document.addEventListener('click', async (e) => {
             const idUser = selectUser.value == '' ? 'all' : selectUser.value
 
             const a = document.createElement("a")
-            a.href = `${baseUrl}generatePaymentsReportPdf/${buscarFechaDesde}/${buscarFechaHasta}`
+            a.href = `${webBaseUrl}generatePaymentsReportPdf/${buscarFechaDesde}/${buscarFechaHasta}`
             a.target = "_blank"
             a.click()
+        } else if (e.target.id == 'printReport') {
+            const resumePayments = document.querySelector('.paymentsMethodsResume')
+            if (!resumePayments) return
+
+            const resumenHtml = resumePayments.innerHTML.trim()
+            if (!resumenHtml) return
+
+            const formatDate = (iso) => {
+                if (!iso || typeof iso !== 'string' || !iso.includes('-')) return iso || ''
+                const [y, m, d] = iso.split('-')
+                if (!y || !m || !d) return iso
+                return `${d}/${m}/${y}`
+            }
+
+            const buscarFechaDesde = fechaDesde?.value || ''
+            const buscarFechaHasta = fechaHasta?.value || ''
+            const desdeLabel = formatDate(buscarFechaDesde)
+            const hastaLabel = formatDate(buscarFechaHasta)
+            const rangoLabel = buscarFechaDesde && buscarFechaHasta
+                ? `Desde ${desdeLabel} hasta ${hastaLabel}`
+                : ''
+
+            const selectedUser = selectUser?.value || ''
+            const selectedUserLabel = selectedUser
+                ? `Usuario: ${selectUser.options[selectUser.selectedIndex]?.text || selectedUser}`
+                : 'Usuario: Todos'
+
+            const printWindow = window.open('', '_blank', 'width=900,height=700')
+            if (!printWindow) return
+
+            const html = `
+                <!doctype html>
+                <html>
+                <head>
+                    <meta charset="utf-8" />
+                    <title>Resumen</title>
+                    <style>
+                        * { box-sizing: border-box; }
+                        body { font-family: Arial, sans-serif; color: #111; padding: 24px; }
+                        h1 { font-size: 20px; margin: 0 0 12px 0; }
+                        .meta { font-size: 12px; color: #444; margin-bottom: 16px; }
+                        .resume { border: 1px solid #d0d0d0; padding: 16px; border-radius: 6px; display: inline-block; min-width: 280px; }
+                        .resume p { margin: 6px 0; }
+                        .resume hr { border: none; border-top: 1px solid #ddd; margin: 10px 0; }
+                    </style>
+                </head>
+                <body>
+                    <h1>Resumen</h1>
+                    <div class="meta">${selectedUserLabel}${rangoLabel ? ' | ' + rangoLabel : ''}</div>
+                    <div class="resume">${resumenHtml}</div>
+                    <script>
+                        window.onload = function() {
+                            window.print();
+                            window.close();
+                        };
+                    </script>
+                </body>
+                </html>
+            `
+            printWindow.document.open()
+            printWindow.document.write(html)
+            printWindow.document.close()
         }
     }
 })
@@ -266,37 +329,87 @@ async function getReportsForPdf(data) {
 async function fillTable(data) {
     const divTr = document.querySelector('.divTr')
     const resumePayments = document.querySelector('.paymentsMethodsResume')
+    const reportsCount = document.getElementById('reportsCount')
 
     let tr = ''
     let resume = ''
     let efectivo = 0
     let transferencia = 0
     let mercadoPago = 0
+    let reservasCount = 0
 
+    const formatMetodo = (m) => {
+        if (m === 'mercado_pago' || m === 'Mercado Pago') return 'Mercado Pago'
+        if (m === 'efectivo') return 'Efectivo'
+        if (m === 'transferencia') return 'Transferencia'
+        return m || 'N/D'
+    }
 
-    data.forEach(pago => {
+    const groups = new Map()
+    data.forEach((pago, index) => {
+        const fallbackKey = `${pago.fecha || ''}-${pago.cliente || ''}-${pago.telefonoCliente || ''}-${pago.totalReserva || ''}`
+        const key = pago.bookingId ? String(pago.bookingId) : (fallbackKey || `no-booking-${index}`)
+        if (!groups.has(key)) {
+            groups.set(key, {
+                bookingId: pago.bookingId || null,
+                fecha: pago.fecha,
+                usuario: pago.usuario,
+                cliente: pago.cliente,
+                telefono: pago.telefonoCliente,
+                totalReserva: pago.totalReserva ? Number(pago.totalReserva) : null,
+                pagos: [],
+            })
+        }
+        const group = groups.get(key)
+        group.pagos.push({
+            metodo: pago.metodoPago,
+            monto: Number(pago.pago),
+        })
+    })
+
+    groups.forEach((g) => {
+        reservasCount += 1
+        const totalPagado = g.pagos.reduce((acc, p) => acc + Number(p.monto || 0), 0)
+        const totalReserva = g.totalReserva ?? totalPagado
+        const saldo = totalReserva - totalPagado
+        const methods = Array.from(new Set(g.pagos.map(p => formatMetodo(p.metodo))))
+        const methodSummary = methods.length > 1 ? methods.join(' + ') : (methods[0] || 'N/D')
 
         tr += `
-        <tr >
-            <td>${pago.fecha}</th>
-            <td>${pago.usuario}</td>
-            <td>$${pago.pago}</td>
-            <td>${pago.metodoPago}</td>
-            <td>${pago.cliente}</td>
-            <td>${pago.telefonoCliente}</td>
+        <tr class="report-summary" data-booking="${g.bookingId ?? ''}">
+            <td>${g.fecha}</th>
+            <td>${g.usuario}</td>
+            <td>$${totalReserva}</td>
+            <td>${methodSummary}</td>
+            <td>${g.cliente}</td>
+            <td>${g.telefono}</td>
         </tr>
-    `
+        <tr class="report-detail d-none" data-booking="${g.bookingId ?? ''}">
+            <td colspan="6">
+                <div class="report-detail-box">
+                    <div><strong>Pagado:</strong> $${totalPagado}</div>
+                    <div><strong>Saldo:</strong> $${saldo}</div>
+                    <div class="report-detail-list">
+                        ${g.pagos.map(p => `<div>${formatMetodo(p.metodo)}: $${p.monto}</div>`).join('')}
+                    </div>
+                </div>
+            </td>
+        </tr>
+        `
 
-        if (pago.metodoPago == "efectivo") {
-            efectivo += Number(pago.pago)
-        } else if (pago.metodoPago == "transferencia") {
-            transferencia += Number(pago.pago)
-        } else if (pago.metodoPago == "mercado_pago") {
-            mercadoPago += Number(pago.pago)
-        }
+        g.pagos.forEach((pago) => {
+            if (pago.metodo === "efectivo") {
+                efectivo += Number(pago.monto)
+            } else if (pago.metodo === "transferencia") {
+                transferencia += Number(pago.monto)
+            } else if (pago.metodo === "mercado_pago" || pago.metodo === "Mercado Pago") {
+                mercadoPago += Number(pago.monto)
+            }
+        })
     })
 
     resume = `
+        <p>Reservas: <b>${reservasCount}</b></p>
         <p>Efectivo: <b> $${efectivo} </b></p>
         <p>Mercado Pago: <b> $${mercadoPago} </b></p>
         <p>Transferencia: <b> $${transferencia} </b></p>
@@ -306,4 +419,17 @@ async function fillTable(data) {
 
     divTr.innerHTML = tr
     resumePayments.innerHTML = resume
+    if (reportsCount) {
+        reportsCount.textContent = `Reservas: ${reservasCount}`
+    }
 }
+
+document.addEventListener('click', (e) => {
+    const row = e.target.closest('.report-summary')
+    if (!row) return
+    const bookingId = row.dataset.booking
+    const detailRow = document.querySelector(`.report-detail[data-booking="${bookingId}"]`)
+    if (detailRow) {
+        detailRow.classList.toggle('d-none')
+    }
+})

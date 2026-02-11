@@ -4,6 +4,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="app-base-url" content="<?= env('app.apiBaseURL', base_url()) ?>">
+    <meta name="app-web-base-url" content="<?= base_url() ?>">
     <title>Registro</title>
     <link rel="stylesheet" href="<?= base_url(PUBLIC_FOLDER . "assets/css/styles.css") ?>">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-rbsA2VBKQhggwzxH7pPCaAqO46MgnOM80zW1RWuH61DGLwZJEdK2Kadq2F9CUG65" crossorigin="anonymous">
@@ -82,7 +84,7 @@
                 <div class="row d-flex align-items-center justify-content-center flex-nowrap flex-row d-none" id="formButtons">
                     <div class="col d-flex align-items-center justify-content-center">
                         <button type="submit" class="btn btn-block btn-flat me-2" id="buttonEdit" style="background-color: #ed9425; color: #ffffff" id="btn-login">Actualizar</button>
-                        <a href="<?= base_url($admin['unit'] . '/abmAdmin') ?>" style="background-color: #595a59; color: #ffffff" class="btn btn-block btn-flat me-2">Volver</a>
+                        <a href="<?= base_url('abmAdmin') ?>" style="background-color: #595a59; color: #ffffff" class="btn btn-block btn-flat me-2">Volver</a>
                     </div>
                 </div>
             </div>

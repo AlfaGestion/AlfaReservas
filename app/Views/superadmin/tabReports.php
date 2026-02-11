@@ -67,7 +67,9 @@
     </div>
 </div>
 
-<div class="table-responsive d-none" id="tableReports">
+<div class="d-none" id="tableReports">
+    <div id="reportsCount" class="mt-2 small text-muted"></div>
+    <div class="table-responsive">
     <table class="table align-middle table-striped-columns mt-2">
         <thead>
             <tr>
@@ -83,6 +85,7 @@
 
         </tbody>
     </table>
+    </div>
 </div>
 
 <div class="table-responsive d-none" id="tableReservations">
