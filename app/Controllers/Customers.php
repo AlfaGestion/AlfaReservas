@@ -21,6 +21,7 @@ class Customers extends BaseController
         $lastName = $this->request->getVar('last_name');
         $dni = $this->request->getVar('dni');
         $city = $this->request->getVar('city');
+        $this->ensureLocalityExists($city);
 
 
         $existingPhone = $modelCustomers->where('phone', $phone)->findAll();
@@ -89,6 +90,7 @@ class Customers extends BaseController
         $dni = $this->request->getVar('dni');
         $offer = $this->request->getVar('offer');
         $city = $this->request->getVar('city');
+        $this->ensureLocalityExists($city);
 
         $query = [
             'name' => $name,
@@ -110,8 +112,31 @@ class Customers extends BaseController
     public function getCustomer($phone)
     {
         $customersModel = new CustomersModel();
+        $rawPhone = trim((string)$phone);
+        $digits = preg_replace('/\D+/', '', $rawPhone);
+        $base = $digits !== '' ? $digits : $rawPhone;
 
-        $customer = $customersModel->where('phone', $phone)->first();
+        $variants = [$base];
+        if ($base !== '') {
+            $withoutLeadingZero = ltrim($base, '0');
+            if ($withoutLeadingZero !== '') {
+                $variants[] = $withoutLeadingZero;
+                $variants[] = '0' . $withoutLeadingZero;
+            }
+        }
+        $variants = array_values(array_unique(array_filter($variants, fn($v) => $v !== null && $v !== '')));
+
+        $query = $customersModel;
+        $first = true;
+        foreach ($variants as $variant) {
+            if ($first) {
+                $query = $query->where('phone', $variant);
+                $first = false;
+            } else {
+                $query = $query->orWhere('phone', $variant);
+            }
+        }
+        $customer = $query->first();
 
         try {
             return  $this->response->setJSON($this->setResponse(null, null, $customer, 'Respuesta exitosa'));

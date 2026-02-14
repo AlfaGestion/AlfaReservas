@@ -136,7 +136,7 @@ $mpKeys = $mpKeysModel->first();
                 </div>
 
                 <div class="form-floating flex-nowrap mb-3">
-                    <input type="number" class="form-control" name="telefono" id="telefono" placeholder="Ingrese el telefono completo" aria-label="name" required>
+                    <input type="tel" inputmode="numeric" class="form-control" name="telefono" id="telefono" placeholder="Ingrese el telefono completo" aria-label="name" required>
                     <label for="telefono">Telefono</label>
                 </div>
 

@@ -2,6 +2,7 @@
 
 namespace App\Controllers;
 
+use App\Models\LocalitiesModel;
 use CodeIgniter\Controller;
 use CodeIgniter\HTTP\CLIRequest;
 use CodeIgniter\HTTP\IncomingRequest;
@@ -61,5 +62,27 @@ abstract class BaseController extends Controller
         // Preload any models, libraries, etc, here.
 
         // E.g.: $this->session = \Config\Services::session();
+    }
+
+    protected function ensureLocalityExists(?string $locality): void
+    {
+        if (!is_string($locality)) {
+            return;
+        }
+
+        $normalized = trim(preg_replace('/\s+/', ' ', $locality));
+        if ($normalized === '') {
+            return;
+        }
+
+        $lower = function_exists('mb_strtolower')
+            ? mb_strtolower($normalized, 'UTF-8')
+            : strtolower($normalized);
+
+        $localitiesModel = new LocalitiesModel();
+        $existing = $localitiesModel->where('LOWER(name)', $lower)->first();
+        if (!$existing) {
+            $localitiesModel->insert(['name' => $normalized]);
+        }
     }
 }

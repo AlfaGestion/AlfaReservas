@@ -4,7 +4,7 @@
         <button type="button" class="btn btn-warning mt-2 mb-2" id="openRateModal" data-bs-toggle="modal" data-bs-target="#rateModal"><i class="fa-solid fa-percent me-1"></i>Editar porcentaje de reserva</button>
         <button type="button" class="btn btn-primary mt-2 mb-2" id="openOfferRateModal" data-bs-toggle="modal" data-bs-target="#offerRateModal"><i class="fa-solid fa-percent me-1"></i>Editar porcentaje de oferta</button>
         <button type="button" class="btn btn-outline-dark mt-2 mb-2" id="toggleConfigPanel"><i class="fa-solid fa-gear me-1"></i>Configuración</button>
-        <button type="button" class="btn btn-outline-secondary mt-2 mb-2" id="toggleCancelReservations"><i class="fa-solid fa-calendar-xmark me-1"></i>Informar cierre</button>
+        <button type="button" class="btn btn-outline-secondary mt-2 mb-2" id="toggleCancelReservations"><i class="fa-solid fa-calendar-xmark me-1"></i>Cierre de cancha</button>
     <?php endif; ?>
 
 </div>
@@ -161,7 +161,7 @@
     <div class="card mt-4 d-none" id="cancelReservationsPanel">
         <div class="card-body">
             <div class="d-flex justify-content-between align-items-center">
-                <h5 class="mb-0">Informar cierre</h5>
+                <h5 class="mb-0">Cierre de cancha</h5>
                 <button type="button" class="btn-close" aria-label="Close" id="closeCancelReservations"></button>
             </div>
 

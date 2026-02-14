@@ -106,6 +106,7 @@ class Bookings extends BaseController
 
         $data = $this->request->getJSON();
         $db = \Config\Database::connect();
+        $this->ensureLocalityExists($data->localidad ?? null);
 
         $queryBooking = [
             'date'                  => $data->fecha,
@@ -484,6 +485,7 @@ class Bookings extends BaseController
         $data = $this->request->getJSON();
         $idBooking = $data->bookingId;
         $db = \Config\Database::connect();
+        $this->ensureLocalityExists($data->localidad ?? null);
 
         $currentBooking = $bookingsModel->getBooking($idBooking);
         if (!$currentBooking) {
@@ -613,6 +615,7 @@ class Bookings extends BaseController
         $customersModel = new CustomersModel();
         $data = $this->request->getJSON();
         $db = \Config\Database::connect();
+        $this->ensureLocalityExists($data->localidad ?? null);
         $pagoTotal = $data->monto == $data->total ? 1 : 0;
 
         if ($this->isClosedForDateField($data->fecha, $data->cancha)) {

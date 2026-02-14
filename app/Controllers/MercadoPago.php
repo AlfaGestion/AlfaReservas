@@ -98,10 +98,18 @@ class MercadoPago extends BaseController
     {
         $rateModel = new RateModel();
         $rateRow = $rateModel->first();
+        $bookingsModel = new BookingsModel();
         $data = $this->request->getJSON();
         $booking = $data->booking ?? null;
         $montoTotal = $data->amount ?? 0;
         $bookingSlotsModel = new BookingSlotsModel();
+        $localidad = null;
+        if (is_object($booking) && isset($booking->localidad)) {
+            $localidad = $booking->localidad;
+        } elseif (is_array($booking) && isset($booking['localidad'])) {
+            $localidad = $booking['localidad'];
+        }
+        $this->ensureLocalityExists($localidad);
 
         if (!$rateRow || !isset($rateRow['value'])) {
             return $this->response->setJSON($this->setResponse(400, true, null, 'No existe tasa de reserva configurada.'));
@@ -154,6 +162,45 @@ class MercadoPago extends BaseController
         $bookingArr['preferenceIdTotal'] = $preferenceIdTotal;
         $bookingArr['slotId'] = $slotId;
 
+        // Crear reserva provisional antes del checkout para no depender de la redirección de retorno.
+        $existingBooking = $bookingsModel->where('id_preference_parcial', $preferenceIdParcial)
+            ->orWhere('id_preference_total', $preferenceIdTotal)
+            ->first();
+
+        if (!$existingBooking) {
+            $bookingsModel->insert([
+                'date' => $bookingArr['fecha'] ?? null,
+                'id_field' => $bookingArr['cancha'] ?? null,
+                'time_from' => $bookingArr['horarioDesde'] ?? null,
+                'time_until' => $bookingArr['horarioHasta'] ?? null,
+                'name' => $bookingArr['nombre'] ?? null,
+                'phone' => $bookingArr['telefono'] ?? null,
+                'locality' => $bookingArr['localidad'] ?? null,
+                'payment' => 0,
+                'approved' => 0,
+                'total' => $bookingArr['total'] ?? 0,
+                'parcial' => $bookingArr['parcial'] ?? 0,
+                'diference' => $bookingArr['total'] ?? 0,
+                'reservation' => 0,
+                'total_payment' => 0,
+                'payment_method' => 'Mercado Pago',
+                'id_preference_parcial' => $preferenceIdParcial,
+                'id_preference_total' => $preferenceIdTotal,
+                'use_offer' => $bookingArr['oferta'] ?? 0,
+                'booking_time' => date("Y-m-d H:i:s"),
+                'mp' => 0,
+                'annulled' => 0,
+                'created_by_type' => 'CLIENTE',
+                'created_by_name' => 'CLIENTE',
+                'created_by_user_id' => null,
+            ]);
+
+            $bookingId = $bookingsModel->getInsertID();
+            if ($bookingId) {
+                $bookingSlotsModel->update($slotId, ['booking_id' => $bookingId]);
+            }
+        }
+
         $intents = session()->get('mp_intents') ?? [];
         $intents[$preferenceIdParcial] = ['booking' => $bookingArr, 'paid_type' => 'parcial'];
         $intents[$preferenceIdTotal] = ['booking' => $bookingArr, 'paid_type' => 'total'];
@@ -183,6 +230,7 @@ class MercadoPago extends BaseController
         if (!empty($preferenceId)) {
             $paid = '';
             $approved = '';
+            $sendEmail = false;
 
             $data = [
                 'collection_id' => $this->request->getVar('collection_id'),
@@ -211,6 +259,7 @@ class MercadoPago extends BaseController
                 if ($intent) {
                     $bookingData = $intent['booking'];
                     $paidType = $intent['paid_type'] ?? 'parcial';
+                    $this->ensureLocalityExists($bookingData['localidad'] ?? null);
 
                     $paid = $paidType === 'total' ? $bookingData['total'] : $bookingData['parcial'];
                     $totalPayment = $paid == $bookingData['total'];
@@ -299,7 +348,7 @@ class MercadoPago extends BaseController
                             'expires_at' => null,
                         ]);
                         $createdFromIntent = true;
-                        $this->sendBookingEmail($bookingId);
+                        $sendEmail = true;
                     }
 
                     unset($intents[$bookingData['preferenceIdParcial']]);
@@ -309,6 +358,7 @@ class MercadoPago extends BaseController
             }
 
             if (!$existingBooking) {
+                log_message('error', 'MP success sin booking asociado. preference_id=' . ($preferenceId ?? 'N/A') . ' payment_id=' . ($data['payment_id'] ?? 'N/A'));
                 return view('mercadoPago/failure');
             }
 
@@ -322,6 +372,7 @@ class MercadoPago extends BaseController
 
         $customer = $customersModel->where('phone', $existingBooking['phone'])->first();
         $customerId = $customer ? $customer['id'] : null;
+        $this->ensureLocalityExists($existingBooking['locality'] ?? null);
         if ($customerId) {
             $customersModel->update($customerId, [
                 'name' => $existingBooking['name'],
@@ -349,12 +400,18 @@ class MercadoPago extends BaseController
             if (!$createdFromIntent && $customer && array_key_exists('quantity', $customer)) {
                 $customersModel->update($customer['id'], ['quantity' => $customer['quantity'] + 1]);
             }
+            if (!$createdFromIntent && (int)($existingBooking['approved'] ?? 0) !== 1) {
+                $sendEmail = true;
+            }
 
             $data['id_booking'] = $existingBooking['id'];
             $mercadoPagoModel->insert($data);
 
             $booking = $bookingsModel->find($existingBooking['id']);
             $mercadoPago =  $mercadoPagoModel->where('id_booking', $existingBooking['id'])->first();
+            if ($sendEmail) {
+                $this->sendBookingEmail($existingBooking['id']);
+            }
         }
 
         if (!$existingBooking) {

@@ -43,6 +43,10 @@ function isEmptyData(data) {
     return false
 }
 
+function normalizePhone(value) {
+    return String(value || '').replace(/\D/g, '')
+}
+
 function normalizeText(value) {
     return (value || '')
         .toString()
@@ -217,6 +221,7 @@ document.addEventListener('change', async (e) => {
 document.addEventListener('click', async (e) => {
     if (e.target) {
         const rate = await getRate()
+        const normalizedPhone = normalizePhone(telefono.value)
 
         if (sessionUserLogued) {
             data = {
@@ -225,7 +230,7 @@ document.addEventListener('click', async (e) => {
                 horarioDesde: horarioDesde.value,
                 horarioHasta: horarioHasta.value,
                 nombre: nombre.value,
-                telefono: telefono.value,
+                telefono: normalizedPhone,
                 localidad: localidad ? localidad.value : '',
             }
         } else {
@@ -235,7 +240,7 @@ document.addEventListener('click', async (e) => {
                 horarioDesde: horarioDesde.value,
                 horarioHasta: horarioHasta.value,
                 nombre: nombre.value,
-                telefono: telefono.value,
+                telefono: normalizedPhone,
                 localidad: localidad ? localidad.value : '',
                 monto: pagoReserva.value,
                 total: inputMonto.value,
@@ -344,9 +349,9 @@ telefono.addEventListener('input', async () => {
 
     let content
 
-    const phone = String(telefono.value)
+    const phone = normalizePhone(telefono.value)
 
-    if (phone.length == 10) {
+    if (phone.length >= 10 && phone.length <= 11) {
         modalSpinner.show()
         const offer = await getOffer()
         const customer = await getCustomer(phone)
