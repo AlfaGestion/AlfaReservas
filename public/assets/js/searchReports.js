@@ -13,12 +13,11 @@ const selectDateRange = document.getElementById('selectDateRange')
 const printReportButton = document.getElementById('printReport')
 
 document.addEventListener('DOMContentLoaded', (e) => {
-    const fechaActual = new Date();
-    const fechaAnterior = new Date(fechaActual)
-    fechaAnterior.setDate(fechaActual.getDate() - 7)
+    const fechaActual = new Date()
+    const hoy = fechaActual.toISOString().split('T')[0]
 
-    fechaDesde.value = fechaAnterior.toISOString().split('T')[0]
-    fechaHasta.value = fechaActual.toISOString().split('T')[0]
+    fechaDesde.value = hoy
+    fechaHasta.value = hoy
 })
 
 selectDateRange.addEventListener('input', () => {

@@ -145,3 +145,55 @@ select {
     background-color: #595959;
     color: #fff;
 }
+
+#uiConfirmModal .modal-dialog {
+    z-index: 1200;
+}
+
+#uiConfirmModal .modal-content {
+    border: 1px solid #d0d4da;
+    box-shadow: 0 18px 45px rgba(0, 0, 0, 0.35);
+}
+
+#uiConfirmModal .modal-header {
+    background: #f8f9fb;
+}
+
+#uiConfirmModal .modal-content.ui-confirm-danger {
+    border: 2px solid #dc3545;
+    box-shadow: 0 22px 55px rgba(220, 53, 69, 0.35);
+    animation: uiConfirmShake 0.24s ease-out;
+}
+
+#uiConfirmModal .modal-content.ui-confirm-danger .modal-header {
+    background: #fdecee;
+}
+
+#uiConfirmModal .modal-content.ui-confirm-danger #uiConfirmTitle {
+    color: #b02a37;
+    font-weight: 700;
+}
+
+.closure-blocking-notice {
+    min-height: 430px;
+    display: flex;
+    align-items: flex-start;
+    font-size: 1.15rem;
+    line-height: 1.6;
+}
+
+#bookingForm.closure-only-date > * {
+    display: none !important;
+}
+
+#bookingForm.closure-only-date > .form-floating.mb-3.mt-3,
+#bookingForm.closure-only-date > #closureNotice {
+    display: block !important;
+}
+
+@keyframes uiConfirmShake {
+    0% { transform: translateX(0); }
+    30% { transform: translateX(-5px); }
+    60% { transform: translateX(5px); }
+    100% { transform: translateX(0); }
+}

@@ -28,11 +28,11 @@ document.addEventListener('click', (e) => {
             const superadminRadio = document.getElementById('superadminRadioEdit')
 
             if(passwordEdit.value == '' || repeatPasswordEdit.value == ''){
-                return alert('Debe completar todos los campos')
+                return alert('Debe completar todos los campos obligatorios.')
             }
 
             if(passwordEdit.value != repeatPasswordEdit.value){
-                return alert('Las contraseñas no coinciden')
+                return alert('Las contraseñas no coinciden.')
             }
 
             data = {
@@ -59,11 +59,11 @@ function fillForm(user) {
         </div>
         
         <div class="form-group has-feedback mb-3 d-flex align-items-center justify-content-center">
-            <input type="password" name="password" id="passwordEdit" class="form-control" placeholder="Contraseña">
+            <input type="password" name="password" id="passwordEdit" class="form-control" placeholder="Contrasena">
         </div>
         
         <div class="form-group has-feedback mb-3 d-flex align-items-center justify-content-center">
-            <input type="password" name="repeat_password" id="repeatPasswordEdit" class="form-control" placeholder="Repetir contraseña">
+            <input type="password" name="repeat_password" id="repeatPasswordEdit" class="form-control" placeholder="Repetir contrasena">
         </div>
         
         <div class="form-group has-feedback mb-3 d-flex align-items-center justify-content-center">
@@ -110,10 +110,10 @@ async function editUser(data) {
         const responseData = await response.json();
 
         if(response.ok){
-            alert('Usuario editado correctamente')
+            alert('Operación realizada correctamente.')
             location.reload()
         } else {
-            alert('Las contraseñas no coinciden')
+            alert('Las contraseñas no coinciden.')
         }
 
     } catch (error) {

@@ -43,6 +43,7 @@ $mpKeys = $mpKeysModel->first();
 
 
                     <!-- <p style="color: red; font-weight: bold">CUIDADO! LOS PAGOS EN ESTA VERSIÓN SERÁN PAGOS REALES</p> -->
+                    <div id="closureWelcomeNotice" class="alert alert-warning mx-3 d-none" style="white-space: pre-line;"></div>
                     <div class="d-flex justify-content-center align-items-center mb-3">
                         <button type="button" class="btn" style="background-color: #f39323;" data-bs-dismiss="modal">Comenzar reserva</button>
                     </div>
@@ -68,6 +69,7 @@ $mpKeys = $mpKeysModel->first();
             <span style="color: #fff; font-weight: bold; background-color: red; padding: 10px 10px; border-radius: 30px">Hoy las canchas permanecerán cerradas</span>
         </div>
 
+        <div id="closureTopNotice" class="alert alert-warning d-none mt-3" style="white-space: pre-line;"></div>
         <div id="formBooking" class="">
             <form action="" id="bookingForm">
 
@@ -175,7 +177,7 @@ $mpKeys = $mpKeysModel->first();
                     <div class="modal-content">
                         <div class="modal-header">
                             <h1 class="modal-title fs-5" id="confirmarReservaLabel">Resumen reserva</h1>
-                            <button type="button" id="buttonCancel" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                            <button type="button" id="buttonCancelSummary" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                         </div>
                         <div class="modal-resume-body">
 
@@ -194,7 +196,7 @@ $mpKeys = $mpKeysModel->first();
                     <div class="modal-content">
                         <div class="modal-header">
                             <h1 class="modal-title fs-5" id="ingresarPagoLabel">Ingresar pago</h1>
-                            <button type="button" id="buttonCancel" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                            <button type="button" id="buttonCancelPayment" class="btn-close" aria-label="Close"></button>
                         </div>
                         <div class="modal-body">
 
@@ -248,7 +250,7 @@ $mpKeys = $mpKeysModel->first();
                             <?php if (session()->logueado) : ?>
                                 <button type="button" class="btn btn-primary" id="confirmBooking">Reservar</button>
                             <?php endif; ?>
-                            <button type="button" class="btn" style="background-color: #5a5a5a; color: #ffffff" id="" data-bs-target="#modalConfirmarReserva" data-bs-toggle="modal">Volver</button>
+                            <button type="button" class="btn" style="background-color: #5a5a5a; color: #ffffff" id="volverPagoModal">Volver</button>
                         </div>
                     </div>
                 </div>
@@ -273,6 +275,23 @@ $mpKeys = $mpKeysModel->first();
                         </div>
                     </div>
 
+                </div>
+            </div>
+
+            <!-- modal confirmacion estilizada -->
+            <div class="modal fade" id="uiConfirmModal" tabindex="-1" aria-labelledby="uiConfirmTitle" aria-hidden="true">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="uiConfirmTitle">Confirmar</h5>
+                            <button type="button" class="btn-close" id="uiConfirmClose" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body" id="uiConfirmBody"></div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn" style="background-color: #5a5a5a; color: #ffffff" id="uiConfirmCancel">Cancelar</button>
+                            <button type="button" class="btn" style="background-color: #f39323;" id="uiConfirmAccept">Aceptar</button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>

@@ -32,11 +32,13 @@ $routes->set404Override();
 $routes->get('/', 'Home::index');
 $routes->post('formInfo', 'Home::infoReserva');
 $routes->post('checkClosure', 'Home::checkClosure');
+$routes->get('getUpcomingClosure', 'Home::getUpcomingClosure');
 $routes->get('getDataMp', 'Home::getDataMp');
 $routes->get('deleteRejected', 'Home::deleteRejected');
 $routes->get('phpinfo', 'Debug::phpinfo');
 
 $routes->post('setPreference', 'MercadoPago::setPreference');
+$routes->post('cancelPendingMpReservation', 'MercadoPago::cancelPendingMpReservation');
 $routes->post('savePreferenceIds', 'MercadoPago::savePreferenceIds');
 $routes->get('payment/success', 'MercadoPago::success');
 $routes->get('payment/failure', 'MercadoPago::failure');

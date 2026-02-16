@@ -16,17 +16,32 @@ const divTimeH = document.getElementById('div-time-h')
 const modalConfirmarReserva = new bootstrap.Modal('#modalConfirmarReserva')
 const modalSpinner = new bootstrap.Modal('#modalSpinner')
 const modalIngresarPago = new bootstrap.Modal('#ingresarPago')
+const modalIngresarPagoElement = document.getElementById('ingresarPago')
 const modalResult = new bootstrap.Modal('#modalResult')
+const uiConfirmModalElement = document.getElementById('uiConfirmModal')
+const uiConfirmModal = uiConfirmModalElement ? new bootstrap.Modal(uiConfirmModalElement) : null
+const uiConfirmTitle = document.getElementById('uiConfirmTitle')
+const uiConfirmBody = document.getElementById('uiConfirmBody')
+const uiConfirmContent = uiConfirmModalElement ? uiConfirmModalElement.querySelector('.modal-content') : null
+const uiConfirmAccept = document.getElementById('uiConfirmAccept')
+const uiConfirmCancel = document.getElementById('uiConfirmCancel')
+const uiConfirmClose = document.getElementById('uiConfirmClose')
 const contentBookingResult = document.getElementById('bookingResult')
 const divSelectCancha = document.getElementById('divSelectCancha')
 const powerOff = document.getElementsByName('powerOff')
 const welcomeModal = new bootstrap.Modal('#welcomeModal')
 const ofertaModal = new bootstrap.Modal('#ofertaModal')
 const closureNotice = document.getElementById('closureNotice')
+const closureWelcomeNotice = document.getElementById('closureWelcomeNotice')
+const closureTopNotice = document.getElementById('closureTopNotice')
 
 let data = {}
 let preferencesIds = {}
 let useOffer = false
+let pendingMpCleanupTimer = null
+let skipCancelOnHide = false
+let pendingMpContext = null
+let closureLoadNoticeShown = false
 // let idCustomer
 let closureInfo = { closed: false, scope: 'none', label: '', fecha: '', closedAll: false, closedFields: [] }
 
@@ -133,27 +148,61 @@ function setupLocalityAutocomplete(inputEl, datalistId) {
 }
 
 // Fecha actual por defecto
-document.addEventListener('DOMContentLoaded', (e) => {
+document.addEventListener('DOMContentLoaded', async (e) => {
     if (esDomingo === '1') {
         checkSunday()
     }
 
     const fechaSistema = new Date()
-    const año = fechaSistema.getFullYear()
+    const anio = fechaSistema.getFullYear()
     const mes = String(fechaSistema.getMonth() + 1).padStart(2, '0')
     const dia = String(fechaSistema.getDate()).padStart(2, '0')
-    const fechaActual = `${año}-${mes}-${dia}`
+    const fechaActual = `${anio}-${mes}-${dia}`
 
     // const fechaActual = new Date().toISOString().split('T')[0]
     fechaInput.setAttribute('min', fechaActual)
     fechaInput.value = fechaActual;
     deleteRejected()
 
-    refreshFieldsFromApi()
+    await refreshFieldsFromApi()
+    await checkClosureStatus()
+
+    if (closureWelcomeNotice) {
+        closureWelcomeNotice.textContent = ''
+        closureWelcomeNotice.classList.add('d-none')
+    }
+    if (closureTopNotice) {
+        closureTopNotice.textContent = ''
+        closureTopNotice.classList.add('d-none')
+    }
+
+    if (!closureLoadNoticeShown && closureInfo && (closureInfo.closedAll || (Array.isArray(closureInfo.closedFields) && closureInfo.closedFields.length > 0))) {
+        closureLoadNoticeShown = true
+        if (closureWelcomeNotice) {
+            if (closureInfo.closedAll) {
+                closureWelcomeNotice.textContent = 'Aviso: hoy hay un cierre informado para todas las canchas. No se pueden realizar reservas para esta fecha.'
+            } else {
+                closureWelcomeNotice.textContent = 'Aviso: hoy hay cierres informados para algunas canchas. Revisa la disponibilidad antes de reservar.'
+            }
+            closureWelcomeNotice.classList.remove('d-none')
+        }
+    } else {
+        await loadUpcomingClosureNotice()
+    }
 
     welcomeModal.show()
 
     setupLocalityAutocomplete(localidad, 'localitiesList')
+
+    if (modalIngresarPagoElement) {
+        modalIngresarPagoElement.addEventListener('hidden.bs.modal', async () => {
+            if (skipCancelOnHide) {
+                skipCancelOnHide = false
+                return
+            }
+            await cancelPendingMpReservation()
+        })
+    }
 })
 
 document.addEventListener('change', async (e) => {
@@ -162,8 +211,8 @@ document.addEventListener('change', async (e) => {
             const day = new Date(fechaInput.value);
             const dayOfWeek = day.getDay();
 
-            if(esDomingo === '1' && dayOfWeek === 6){
-                return alert('Ese día permanecerán cerradas las canchas')
+            if (esDomingo === '1' && dayOfWeek === 6) {
+                return alert('Ese dia permaneceran cerradas las canchas')
             }
 
             selectCancha.selectedIndex = 0
@@ -185,11 +234,9 @@ document.addEventListener('change', async (e) => {
             }
 
             inputMonto.value = 0
-
             getAmount()
 
         } else if (e.target.id == 'cancha') {
-
             if (!sessionUserLogued) {
                 divMonto.classList.remove('d-none')
             }
@@ -199,7 +246,6 @@ document.addEventListener('change', async (e) => {
 
         } else if (e.target.id == 'horarioHasta') {
             inputMonto.value = 0
-
             getAmount(selectCancha.value)
 
         } else if (e.target.id == 'switchPagoTotal') {
@@ -260,23 +306,39 @@ document.addEventListener('click', async (e) => {
                 return
             }
             if (fecha.value == '' || cancha.value == '' || horarioDesde.value == '' || horarioHasta.value == '' || nombre.value == '' || telefono.value == '') {
-                alert('Debe completar todos los datos')
+                alert('Debe completar todos los campos obligatorios.')
                 return;
-            } else {
-                await setScriptMP(inputMonto.value)
-
             }
 
             if (horarioDesde.value == '23' && horarioHasta.value == '00' || horarioDesde.value == '23' && horarioHasta.value == '01' || horarioDesde.value == '22' && horarioHasta.value == '00' || horarioDesde.value == '22' && horarioHasta.value == '01') {
             } else if (parseInt(horarioDesde.value) >= parseInt(horarioHasta.value)) {
-                alert('El horario de comienzo no puede ser mayor al de fin')
+                alert('El horario de inicio no puede ser mayor o igual al horario de fin.')
                 return;
             }
 
             fetchFormInfo(data)
+            modalConfirmarReserva.show()
 
-        } else if (e.target.id == 'buttonCancel' || e.target.id == 'btnClose' || e.target.id == 'cancelarReserva') {
+        } else if (e.target.id == 'cancelarReserva') {
             location.reload(true)
+        } else if (e.target.id == 'buttonCancelPayment') {
+            const confirmCancel = await showStyledConfirm({
+                title: 'Cancelar reserva',
+                message: '<p class="mb-1">Atencion: se anulara la reserva pendiente y se liberara el horario.</p><p class="mb-0"><b>Deseas continuar?</b></p>',
+                acceptText: 'Si, cancelar',
+                cancelText: 'Volver',
+                tone: 'danger'
+            })
+            if (!confirmCancel) {
+                return
+            }
+            const cancelled = await cancelPendingMpReservation()
+            if (cancelled) {
+                skipCancelOnHide = true
+                modalIngresarPago.hide()
+            } else {
+                alert('No se pudo cancelar la reserva. Intenta nuevamente.')
+            }
         } else if (e.target.id == 'switchPagoTotal') {
             const switchPagoTotal = document.getElementById('switchPagoTotal')
             const nocturnalTime = await getNocturnalTime()
@@ -301,9 +363,29 @@ document.addEventListener('click', async (e) => {
 
                 modalIngresarPago.show()
             } else {
-                alert('Sr cliente, al abonar una reserva (sea de manera parcial o total) asume el compromiso y la responsabilidad de la asistencia. Caso contrario no habr? devoluciones de dinero y los movimientos de reserva quedar?n sujetos a disponibilidad. As? mismo, en caso de llegar tarde a la cancha, el tiempo de juego ser? hasta la fecha reservada.')
+                const accepted = await showStyledConfirm({
+                    title: 'Antes de continuar',
+                    message: `
+                        <p class="mb-2">Al abonar una reserva aceptas estas condiciones:</p>
+                        <ul class="mb-2">
+                            <li>No hay devolucion de dinero.</li>
+                            <li>Los cambios dependen de la disponibilidad.</li>
+                            <li>Si llegas tarde, el horario finaliza en la hora reservada.</li>
+                        </ul>
+                        <p class="mb-0"><b>Deseas ir a Mercado Pago?</b></p>
+                    `,
+                    acceptText: 'Continuar',
+                    cancelText: 'Volver'
+                })
+                if (!accepted) {
+                    return
+                }
 
                 const rate = await getRate()
+                const mpReady = await setScriptMP(inputMonto.value)
+                if (!mpReady) {
+                    return
+                }
                 modalIngresarPago.show()
                 pagoReserva.value = inputMonto.value * rate / 100
             }
@@ -328,6 +410,24 @@ document.addEventListener('click', async (e) => {
             fetchFormInfo(data)
 
             modalConfirmarReserva.show()
+        } else if (e.target.id == 'volverPagoModal') {
+            const confirmCancel = await showStyledConfirm({
+                title: 'Cancelar reserva',
+                message: '<p class="mb-1">Atencion: se anulara la reserva pendiente y se liberara el horario.</p><p class="mb-0"><b>Deseas continuar?</b></p>',
+                acceptText: 'Si, cancelar',
+                cancelText: 'Volver',
+                tone: 'danger'
+            })
+            if (!confirmCancel) {
+                return
+            }
+            const cancelled = await cancelPendingMpReservation()
+            if (cancelled) {
+                skipCancelOnHide = true
+                modalIngresarPago.hide()
+            } else {
+                alert('No se pudo cancelar la reserva. Intenta nuevamente.')
+            }
         }
     }
 })
@@ -438,7 +538,7 @@ async function saveAdminBooking(data) {
         const responseData = await response.json();
 
         if (!response.ok || responseData.error) {
-            alert(responseData.message || 'El horario ya está ocupado o en proceso.')
+            alert(responseData.message || 'El horario seleccionado ya no esta disponible. Elegi otro e intenta nuevamente.')
             return
         }
 
@@ -470,44 +570,130 @@ async function setScriptMP(amount) {
         amount: amount,
     }
 
-    let preferences
     try {
-        preferences = await setPreference(`${baseUrl}setPreference`, { amount: amount, booking: data })
+        const preferences = await setPreference(`${baseUrl}setPreference`, { amount: amount, booking: data })
+        const mp = new MercadoPago(publicKeyMp, {
+            locale: "es-AR"
+        })
+        resetMercadoPagoButtons()
+
+        mp.checkout({
+            preference: {
+                id: preferences.preferenceIdParcial
+            },
+            render: {
+                container: '#checkout-btn-parcial',
+                label: 'Pagar con Mercado Pago'
+            }
+        })
+
+        mp.checkout({
+            preference: {
+                id: preferences.preferenceIdTotal
+            },
+            render: {
+                container: '#checkout-btn-total',
+                label: 'Pagar con Mercado Pago'
+            }
+        })
+
+        data.preferenceIdParcial = preferences.preferenceIdParcial,
+            data.preferenceIdTotal = preferences.preferenceIdTotal
+        data.pendingBookingId = preferences.bookingId || null
+        data.pendingSlot = {
+            fecha: data.fecha || null,
+            cancha: data.cancha || null,
+            horarioDesde: data.horarioDesde || null,
+            horarioHasta: data.horarioHasta || null,
+        }
+        pendingMpContext = {
+            bookingId: data.pendingBookingId || null,
+            preferenceIdParcial: data.preferenceIdParcial || null,
+            preferenceIdTotal: data.preferenceIdTotal || null,
+            telefono: data.telefono || null,
+            fecha: data.pendingSlot?.fecha || null,
+            cancha: data.pendingSlot?.cancha || null,
+            horarioDesde: data.pendingSlot?.horarioDesde || null,
+            horarioHasta: data.pendingSlot?.horarioHasta || null,
+        }
+
+        schedulePendingMpCleanup()
+        return true
     } catch (error) {
+        await showStyledConfirm({
+            title: 'Horario no disponible',
+            message: `<p class="mb-1">${error.message || 'El horario ya fue tomado por otra reserva.'}</p><p class="mb-0"><b>Elegi otra cancha u horario para continuar.</b></p>`,
+            acceptText: 'Aceptar',
+            cancelText: 'Cerrar',
+            tone: 'danger'
+        })
+        await backToMainAndRefreshAvailability()
+        return false
+    } finally {
         modalSpinner.hide()
-        alert(error.message || 'El horario ya está ocupado o en proceso.')
-        return
     }
-    const mp = new MercadoPago(publicKeyMp, {
-        locale: "es-AR"
-    })
+}
 
-    mp.checkout({
-        preference: {
-            id: preferences.preferenceIdParcial
-        },
-        render: {
-            container: '#checkout-btn-parcial',
-            label: 'Pagar con Mercado Pago'
-        }
-    })
+function schedulePendingMpCleanup() {
+    if (pendingMpCleanupTimer) {
+        clearTimeout(pendingMpCleanupTimer)
+    }
 
-    mp.checkout({
-        preference: {
-            id: preferences.preferenceIdTotal
-        },
-        render: {
-            container: '#checkout-btn-total',
-            label: 'Pagar con Mercado Pago'
-        }
-    })
+    // Si el cliente no avanza al checkout en un tiempo razonable, liberamos el slot.
+    pendingMpCleanupTimer = setTimeout(async () => {
+        await cancelPendingMpReservation()
+    }, 3 * 60 * 1000)
+}
 
+function resetMercadoPagoButtons() {
+    const btnParcial = document.getElementById('checkout-btn-parcial')
+    const btnTotal = document.getElementById('checkout-btn-total')
 
-    data.preferenceIdParcial = preferences.preferenceIdParcial,
-        data.preferenceIdTotal = preferences.preferenceIdTotal
+    if (btnParcial) {
+        btnParcial.innerHTML = ''
+        btnParcial.style.display = 'block'
+    }
 
-    modalSpinner.hide()
-    modalConfirmarReserva.show()
+    if (btnTotal) {
+        btnTotal.innerHTML = ''
+        btnTotal.style.display = 'none'
+    }
+}
+
+async function backToMainAndRefreshAvailability() {
+    resetMercadoPagoButtons()
+    skipCancelOnHide = true
+    try {
+        modalSpinner.hide()
+    } catch (e) {}
+    try {
+        modalIngresarPago.hide()
+    } catch (e) {}
+    try {
+        modalConfirmarReserva.hide()
+    } catch (e) {}
+
+    data.pendingBookingId = null
+    data.preferenceIdParcial = null
+    data.preferenceIdTotal = null
+    data.pendingSlot = null
+    pendingMpContext = null
+
+    await refreshFieldsFromApi()
+
+    if (horarioDesde?.value && horarioHasta?.value) {
+        await getTimeFromBookings()
+    }
+
+    if (selectCancha) {
+        selectCancha.value = ''
+        selectCancha.focus()
+    }
+
+    // Limpieza defensiva por si quedo algun backdrop abierto.
+    document.querySelectorAll('.modal-backdrop').forEach((el) => el.remove())
+    document.body.classList.remove('modal-open')
+    document.body.style.removeProperty('padding-right')
 }
 
 
@@ -538,11 +724,24 @@ async function setPreference(url, data) {
             },
             body: JSON.stringify(data)
         });
+        const raw = await response.text();
+        let responseData = null;
+        try {
+            responseData = raw ? JSON.parse(raw) : null;
+        } catch (e) {
+            throw new Error('El horario seleccionado ya no esta disponible. Elegi otro e intenta nuevamente.');
+        }
 
-        const responseData = await response.json();
+        if (!responseData) {
+            throw new Error('El horario seleccionado ya no esta disponible. Elegi otro e intenta nuevamente.');
+        }
 
         if (responseData.error) {
-            throw new Error(responseData.message || 'No se pudo generar la preferencia.')
+            throw new Error(responseData.message || 'El horario seleccionado ya no esta disponible. Elegi otro e intenta nuevamente.')
+        }
+
+        if (!response.ok) {
+            throw new Error(responseData.message || 'El horario seleccionado ya no esta disponible. Elegi otro e intenta nuevamente.')
         }
 
         return responseData.data
@@ -551,6 +750,123 @@ async function setPreference(url, data) {
         console.error('Error:', error);
         throw error;
     }
+}
+
+async function cancelPendingMpReservation() {
+    let cancelled = false
+    try {
+        const cancelPayload = {
+            bookingId: pendingMpContext?.bookingId || data?.pendingBookingId || null,
+            preferenceIdParcial: pendingMpContext?.preferenceIdParcial || data?.preferenceIdParcial || null,
+            preferenceIdTotal: pendingMpContext?.preferenceIdTotal || data?.preferenceIdTotal || null,
+            telefono: pendingMpContext?.telefono || data?.telefono || normalizePhone(telefono?.value || '') || null,
+            fecha: pendingMpContext?.fecha || data?.pendingSlot?.fecha || data?.fecha || fechaInput?.value || null,
+            cancha: pendingMpContext?.cancha || data?.pendingSlot?.cancha || data?.cancha || selectCancha?.value || null,
+            horarioDesde: pendingMpContext?.horarioDesde || data?.pendingSlot?.horarioDesde || data?.horarioDesde || horarioDesde?.value || null,
+            horarioHasta: pendingMpContext?.horarioHasta || data?.pendingSlot?.horarioHasta || data?.horarioHasta || horarioHasta?.value || null,
+        }
+
+        const hasIdentifiers = cancelPayload.bookingId || cancelPayload.preferenceIdParcial || cancelPayload.preferenceIdTotal
+        const hasSlotData = cancelPayload.fecha && cancelPayload.cancha && cancelPayload.horarioDesde && cancelPayload.horarioHasta
+        if (!hasIdentifiers && !hasSlotData) {
+            return false
+        }
+
+        const response = await fetch(`${baseUrl}cancelPendingMpReservation`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(cancelPayload)
+        })
+
+        const responseData = await response.json().catch(() => null)
+        if (!response.ok || !responseData || responseData.error) {
+            throw new Error(responseData?.message || 'No se pudo cancelar la reserva. Intenta nuevamente.')
+        }
+        // Si el backend respondio OK, tratamos la operacion como cancelada (idempotente).
+        cancelled = true
+        return cancelled
+    } catch (error) {
+        console.error('Error al cancelar reserva pendiente:', error)
+        alert(error.message || 'No se pudo cancelar la reserva. Intenta nuevamente.')
+        return false
+    } finally {
+        if (cancelled) {
+            if (pendingMpCleanupTimer) {
+                clearTimeout(pendingMpCleanupTimer)
+                pendingMpCleanupTimer = null
+            }
+            resetMercadoPagoButtons()
+            // Evita reintentos sobre preferencias viejas.
+            data.pendingBookingId = null
+            data.preferenceIdParcial = null
+            data.preferenceIdTotal = null
+            data.pendingSlot = null
+            pendingMpContext = null
+        }
+    }
+}
+
+function showStyledConfirm({
+    title = 'Confirmar',
+    message = '',
+    acceptText = 'Aceptar',
+    cancelText = 'Cancelar',
+    tone = 'default'
+} = {}) {
+    if (!uiConfirmModal || !uiConfirmTitle || !uiConfirmBody || !uiConfirmAccept || !uiConfirmCancel || !uiConfirmClose) {
+        return Promise.resolve(window.confirm(message || title))
+    }
+
+    uiConfirmTitle.textContent = title
+    uiConfirmBody.innerHTML = message
+    uiConfirmAccept.textContent = acceptText
+    uiConfirmCancel.textContent = cancelText
+    if (uiConfirmContent) {
+        uiConfirmContent.classList.remove('ui-confirm-danger')
+        if (tone === 'danger') {
+            uiConfirmContent.classList.add('ui-confirm-danger')
+        }
+    }
+
+    return new Promise((resolve) => {
+        let settled = false
+
+        const cleanup = () => {
+            uiConfirmAccept.removeEventListener('click', onAccept)
+            uiConfirmCancel.removeEventListener('click', onCancel)
+            uiConfirmClose.removeEventListener('click', onCancel)
+            uiConfirmModalElement.removeEventListener('hidden.bs.modal', onHidden)
+        }
+
+        const finish = (result) => {
+            if (settled) return
+            settled = true
+            cleanup()
+            resolve(result)
+        }
+
+        const onAccept = () => {
+            finish(true)
+            uiConfirmModal.hide()
+        }
+
+        const onCancel = () => {
+            finish(false)
+            uiConfirmModal.hide()
+        }
+
+        const onHidden = () => {
+            finish(false)
+        }
+
+        uiConfirmAccept.addEventListener('click', onAccept)
+        uiConfirmCancel.addEventListener('click', onCancel)
+        uiConfirmClose.addEventListener('click', onCancel)
+        uiConfirmModalElement.addEventListener('hidden.bs.modal', onHidden)
+        uiConfirmModal.show()
+    })
 }
 
 
@@ -565,7 +881,7 @@ async function getAmount(field = "1") {
         }
 
         if (!selectedField) {
-            alert('No se pudo obtener la cancha desde la API.')
+            alert('No se pudo obtener la información. Intenta nuevamente.')
             return
         }
 
@@ -594,7 +910,7 @@ async function getRate() {
 
             return responseData.data.value
         } else {
-            alert('Algo salió mal. No se pudo obtener la información.');
+            alert('No se pudo obtener la información. Intenta nuevamente.');
         }
     } catch (error) {
         console.error('Error:', error);
@@ -616,7 +932,7 @@ async function getOffer() {
 
             return responseData.data
         } else {
-            alert('Algo salió mal. No se pudo obtener la información.');
+            alert('No se pudo obtener la información. Intenta nuevamente.');
         }
     } catch (error) {
         console.error('Error:', error);
@@ -641,7 +957,7 @@ async function getNocturnalTime() {
 
             return nocturnalTime
         } else {
-            alert('Algo salió mal. No se pudo obtener la información.');
+            alert('No se pudo obtener la información. Intenta nuevamente.');
         }
     } catch (error) {
         console.error('Error:', error);
@@ -666,7 +982,7 @@ async function getFields() {
             return responseData.data
 
         } else {
-            alert('Algo salió mal. No se pudo obtener la información.');
+            alert('No se pudo obtener la información. Intenta nuevamente.');
         }
 
     } catch (error) {
@@ -720,7 +1036,7 @@ async function getField(id) {
             return responseData.data
 
         } else {
-            alert('Algo salió mal. No se pudo obtener la información.');
+            alert('No se pudo obtener la información. Intenta nuevamente.');
         }
 
     } catch (error) {
@@ -744,7 +1060,7 @@ async function saveBooking(data) {
 
         const responseData = await response.json();
         if (!response.ok || responseData.error) {
-            alert(responseData.message || 'El horario ya está ocupado o en proceso.')
+            alert(responseData.message || 'El horario seleccionado ya no esta disponible. Elegi otro e intenta nuevamente.')
             return
         }
 
@@ -754,7 +1070,7 @@ async function saveBooking(data) {
     }
 }
 
-// Trae la información a mostrar en el modal
+// Trae la informacion a mostrar en el modal
 async function fetchFormInfo(data) {
     try {
         const response = await fetch(`${baseUrl}formInfo`, {
@@ -768,14 +1084,14 @@ async function fetchFormInfo(data) {
         const responseData = await response.json();
 
         if (isEmptyData(responseData.data)) {
-            console.warn('No se pudo obtener la información para el modal.')
+            console.warn('No se pudo obtener la informacion para el modal.')
             return
         }
 
         if (responseData.data != '') {
             fillModal(responseData);
         } else {
-            alert('Algo salió mal. No se pudo obtener la información.');
+            alert('No se pudo obtener la información. Intenta nuevamente.');
         }
 
     } catch (error) {
@@ -799,7 +1115,7 @@ async function getCustomer(phone) {
             return responseData.data
 
         } else {
-            alert('Algo salió mal. No se pudo obtener la información.');
+            alert('No se pudo obtener la información. Intenta nuevamente.');
         }
 
     } catch (error) {
@@ -831,7 +1147,7 @@ async function fillModal(data) {
             <li><i class="fa-solid fa-futbol"></i> <b>Cancha:</b> ${data.data.cancha}</li>
             <li><i class="fa-solid fa-clock"></i> <b>Horario:</b> ${data.data.horarioDesde}:00 a ${data.data.horarioHasta}:00</li>
             <li><i class="fa-solid fa-user"></i> <b>Nombre:</b> ${data.data.nombre}</li>
-            <li><i class="fa-solid fa-phone"></i> <b>Teléfono:</b> ${data.data.telefono}</li>
+            <li><i class="fa-solid fa-phone"></i> <b>Telefono:</b> ${data.data.telefono}</li>
             ${localidadValue}
         </ul>
         `;
@@ -844,7 +1160,7 @@ async function fillModal(data) {
             <li><i class="fa-solid fa-clock"></i> <b>Horario:</b> ${data.data.horarioDesde}:00 a ${data.data.horarioHasta}:00</li>
             <i class="fa-regular fa-money-bill-1"></i> <b>Monto:</b> $${amount}</li>
             <li><i class="fa-solid fa-user"></i> <b>Nombre:</b> ${data.data.nombre}</li>
-            <li><i class="fa-solid fa-phone"></i> <b>Teléfono:</b> ${data.data.telefono}</li>
+            <li><i class="fa-solid fa-phone"></i> <b>Telefono:</b> ${data.data.telefono}</li>
             ${localidadValue}
         </ul>
         `;
@@ -866,15 +1182,47 @@ function formatDateDdMmYyyy(dateStr) {
     return `${d}/${m}/${y}`
 }
 
-function showClosureNotice(message) {
+async function loadUpcomingClosureNotice() {
+    if (!closureWelcomeNotice && !closureTopNotice) return
+    try {
+        const response = await fetch(`${baseUrl}getUpcomingClosure`)
+        const responseData = await response.json()
+        if (responseData.error || !responseData.data) return
+
+        const upcoming = responseData.data
+        const fechaLabel = formatDateDdMmYyyy(upcoming.fecha)
+        const detail = upcoming.closedAll
+            ? 'Proximo cierre general'
+            : 'Proximo cierre informado'
+        const text = `${detail}: ${fechaLabel}.`
+        if (closureWelcomeNotice) {
+            closureWelcomeNotice.textContent = text
+            closureWelcomeNotice.classList.remove('d-none')
+        }
+        if (closureTopNotice) {
+            closureTopNotice.textContent = text
+            closureTopNotice.classList.remove('d-none')
+        }
+    } catch (error) {
+        console.error('Error:', error)
+    }
+}
+
+function showClosureNotice(message, blocking = false) {
     if (!closureNotice) return
     if (!message) {
         closureNotice.classList.add('d-none')
         closureNotice.textContent = ''
+        closureNotice.classList.remove('closure-blocking-notice')
         return
     }
     closureNotice.textContent = message
     closureNotice.style.whiteSpace = 'pre-line'
+    if (blocking) {
+        closureNotice.classList.add('closure-blocking-notice')
+    } else {
+        closureNotice.classList.remove('closure-blocking-notice')
+    }
     closureNotice.classList.remove('d-none')
 }
 
@@ -882,10 +1230,26 @@ function setBookingDisabled(disabled) {
     if (selectCancha) selectCancha.disabled = disabled
     if (horarioDesde) horarioDesde.disabled = disabled
     if (horarioHasta) horarioHasta.disabled = disabled
+    if (inputMonto) inputMonto.disabled = true
+    if (telefono) telefono.disabled = disabled
+    if (localidad) localidad.disabled = disabled
+    if (nombre) nombre.disabled = disabled
+    const btnCancelar = document.getElementById('cancelarReserva')
     const btnConfirmar = document.getElementById('confirmarReserva')
     const btnConfirmarAdmin = document.getElementById('confirmarAdminReserva')
+    if (btnCancelar) btnCancelar.disabled = disabled
     if (btnConfirmar) btnConfirmar.disabled = disabled
     if (btnConfirmarAdmin) btnConfirmarAdmin.disabled = disabled
+    if (fechaInput) fechaInput.disabled = false
+}
+
+function setClosureOnlyDateMode(enabled) {
+    if (!bookingForm) return
+    if (enabled) {
+        bookingForm.classList.add('closure-only-date')
+    } else {
+        bookingForm.classList.remove('closure-only-date')
+    }
 }
 
 function applyClosedFieldsToSelect() {
@@ -906,7 +1270,8 @@ function applyClosedFieldsToSelect() {
 async function checkClosureStatus() {
     const dateValue = fechaInput?.value || ''
     if (!dateValue) {
-        showClosureNotice('')
+        showClosureNotice('', false)
+        setClosureOnlyDateMode(false)
         setBookingDisabled(false)
         return
     }
@@ -923,14 +1288,16 @@ async function checkClosureStatus() {
         const responseData = await response.json()
         if (responseData.error || !responseData.data) {
             closureInfo = { closed: false, scope: 'none', label: '', fecha: '', closedAll: false, closedFields: [] }
-            showClosureNotice('')
+            showClosureNotice('', false)
+            setClosureOnlyDateMode(false)
             setBookingDisabled(false)
             return
         }
         const data = responseData.data
         closureInfo = data
         if (!data.closedAll) {
-            showClosureNotice('')
+            showClosureNotice('', false)
+            setClosureOnlyDateMode(false)
             setBookingDisabled(false)
         }
 
@@ -941,13 +1308,15 @@ async function checkClosureStatus() {
         const fechaLabel = formatDateDdMmYyyy(data.fecha)
         const template = data.message && data.message.trim()
             ? data.message
-            : `Aviso importante\n\nQueremos informarles que el día <fecha> las canchas permanecerán cerradas.\nPedimos disculpas por las molestias que esto pueda ocasionar.\n\nDe todas formas, ya pueden reservar normalmente las horas para fechas posteriores.\nMuchas gracias por la comprensión y por seguir eligiéndonos.`
+            : `Aviso importante\n\nQueremos informarles que el dia <fecha> las canchas permaneceran cerradas.\nPedimos disculpas por las molestias que esto pueda ocasionar.\n\nDe todas formas, ya pueden reservar normalmente las horas para fechas posteriores.\nMuchas gracias por la comprension y por seguir eligiendonos.`
         const resolved = template.replace(/<fecha>/g, fechaLabel)
-        showClosureNotice(resolved)
+        showClosureNotice(resolved, true)
+        setClosureOnlyDateMode(true)
         setBookingDisabled(true)
     } catch (error) {
         console.error('Error:', error)
         closureInfo = { closed: false, scope: 'none', label: '', fecha: '', closedAll: false, closedFields: [] }
+        setClosureOnlyDateMode(false)
         setBookingDisabled(false)
     }
 }
@@ -970,7 +1339,7 @@ async function getTimeFromBookings() {
 
             getFieldForTimeBookings(responseData.data)
         } else {
-            alert('Algo salió mal. No se pudo obtener la información.');
+            alert('No se pudo obtener la información. Intenta nuevamente.');
         }
 
     } catch (error) {
@@ -1048,15 +1417,16 @@ async function getTimeFromBookings() {
 
 async function getFieldForTimeBookings(timeBookings) {
     let exists = false
-    const currentReserva = [horarioDesde.value, horarioHasta.value] //21 a 22
+    const normalizeHour = (h) => String(h ?? '').padStart(2, '0')
+    const currentReserva = [normalizeHour(horarioDesde.value), normalizeHour(horarioHasta.value)] // 21 a 22
     const options = selectCancha.options //canchas (4)
 
 
     timeBookings.forEach(element => {
         let reserva = []
         for (let t = 0; t < element.time.length; t += 2) {
-            if (horarioDesde.value == element.time[t]) {
-                reserva.push(element.time.slice(t, t + 2))
+            if (normalizeHour(horarioDesde.value) == normalizeHour(element.time[t])) {
+                reserva.push(element.time.slice(t, t + 2).map(normalizeHour))
             }
         }
 
@@ -1160,3 +1530,7 @@ function calculateAmount(from, until, amount) {
 
     return result
 }
+
+
+
+

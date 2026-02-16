@@ -62,7 +62,7 @@ class Bookings extends BaseController
 
         $message = "Nueva reserva\n\n"
             . "Nombre: {$booking['name']}\n"
-            . "Teléfono: {$booking['phone']}\n"
+            . "TelÃ©fono: {$booking['phone']}\n"
             . "Localidad: " . ($localidad !== '' ? $localidad : 'N/D') . "\n"
             . "Fecha: {$fecha}\n"
             . "Horario: {$horario}\n"
@@ -90,7 +90,9 @@ class Bookings extends BaseController
 
         $email->setFrom($fromEmail, $fromName);
         $email->setTo($toEmail);
-        $email->setSubject('Nueva reserva');
+        $subjectName = trim((string)($booking['name'] ?? 'Cliente'));
+        $subjectDate = $booking['date'] ? date('d/m/Y', strtotime($booking['date'])) : 'Sin fecha';
+        $email->setSubject("Reserva: {$subjectName} - {$subjectDate}");
         $email->setMessage($message);
 
         if (!$email->send()) {
@@ -129,7 +131,7 @@ class Bookings extends BaseController
             'use_offer'             => $data->oferta,
             'booking_time'          => date("Y-m-d H:i:s"),
             'mp'                    => 0,
-            'annulled'              => 0, // Aseguramos que este nuevo registro no esté anulado
+            'annulled'              => 0, // Aseguramos que este nuevo registro no estÃ© anulado
             'created_by_type'       => 'CLIENTE',
             'created_by_name'       => 'CLIENTE',
             'created_by_user_id'    => null,
@@ -203,7 +205,7 @@ class Bookings extends BaseController
                 $slotId = $bookingSlotsModel->insert($slotData, true);
                 if (!$slotId) {
                     $db->transRollback();
-                    return $this->response->setJSON($this->setResponse(409, true, null, 'El horario ya está en proceso de reserva.'));
+                    return $this->response->setJSON($this->setResponse(409, true, null, 'El horario ya estÃ¡ en proceso de reserva.'));
                 }
 
                 $bookingsModel->insert($queryBooking);
@@ -228,25 +230,61 @@ class Bookings extends BaseController
     public function getBookings($fecha)
     {
         $bookingsModel = new BookingsModel();
+        $bookingSlotsModel = new BookingSlotsModel();
         $fieldsModel = new FieldsModel();
         $timeModel = new TimeModel();
 
         $time = $timeModel->getOpeningTime();
 
-        $bookings = [];
+        $occupied = [];
         if ($fecha != '') {
-            $bookings = $bookingsModel->where('date', $fecha)->where('annulled', 0)->findAll();
+            $now = date('Y-m-d H:i:s');
+
+            // Limpiar locks vencidos para no mostrar falsos bloqueos.
+            $bookingSlotsModel->where('active', 1)
+                ->where('status', 'pending')
+                ->where('expires_at <', $now)
+                ->set(['active' => 0, 'status' => 'expired'])
+                ->update();
+
+            // 1) Reservas reales (tabla bookings): siempre bloquean si no estÃ¡n anuladas.
+            $bookings = $bookingsModel->where('date', $fecha)
+                ->where('annulled', 0)
+                ->findAll();
+
+            foreach ($bookings as $b) {
+                $occupied[] = [
+                    'id_field' => $b['id_field'],
+                    'time_from' => $b['time_from'],
+                    'time_until' => $b['time_until'],
+                ];
+            }
+
+            // 2) Locks temporales (tabla booking_slots): solo pendientes vigentes.
+            $pendingSlots = $bookingSlotsModel->where('date', $fecha)
+                ->where('active', 1)
+                ->where('status', 'pending')
+                ->where('expires_at >=', $now)
+                ->findAll();
+
+            foreach ($pendingSlots as $s) {
+                $occupied[] = [
+                    'id_field' => $s['id_field'],
+                    'time_from' => $s['time_from'],
+                    'time_until' => $s['time_until'],
+                ];
+            }
         }
 
         $timeBookings = [];
 
-        foreach ($bookings as $booking) {
+        foreach ($occupied as $slot) {
             $found = false;
 
             foreach ($timeBookings as &$timeBooking) {
-                if (intval($timeBooking['id_cancha']) === intval($booking['id_field'])) {
-                    $indexFrom = array_search($booking['time_from'], $time);
-                    $indexUntil = array_search($booking['time_until'], $time);
+                if (intval($timeBooking['id_cancha']) === intval($slot['id_field'])) {
+                    $indexFrom = array_search($slot['time_from'], $time);
+                    $indexUntil = array_search($slot['time_until'], $time);
 
                     for ($currentTime = $indexFrom; $currentTime <= $indexUntil; $currentTime++) {
                         $timeBooking['time'][] = strval(sprintf("%02d", $time[$currentTime]));
@@ -258,13 +296,13 @@ class Bookings extends BaseController
 
             if (!$found) {
                 $reserva = [
-                    'id_cancha' => $booking['id_field'],
-                    'nombre_cancha' => $fieldsModel->getField($booking['id_field'])['name'],
+                    'id_cancha' => $slot['id_field'],
+                    'nombre_cancha' => $fieldsModel->getField($slot['id_field'])['name'],
                     'time' => [],
                 ];
 
-                $indexFrom = array_search($booking['time_from'], $time);
-                $indexUntil = array_search($booking['time_until'], $time);
+                $indexFrom = array_search($slot['time_from'], $time);
+                $indexUntil = array_search($slot['time_until'], $time);
 
                 for ($currentTime = $indexFrom; $currentTime <= $indexUntil; $currentTime++) {
                     $reserva['time'][] = strval(sprintf("%02d", $time[$currentTime]));
@@ -339,7 +377,7 @@ class Bookings extends BaseController
         $bookingsModel = new BookingsModel();
         $data = $this->request->getJSON();
 
-        // 1. Limpieza básica de filtros
+        // 1. Limpieza bÃ¡sica de filtros
         $user = (empty($data->user) || $data->user == '') ? 'all' : $data->user;
 
         // 2. Consulta con JOINs para traer datos de Usuario y Cliente de un solo golpe
@@ -371,11 +409,12 @@ class Bookings extends BaseController
 
         $paymentsResult = $query->findAll();
 
-        // 3. Formateo de salida (mucho más ligero)
+        // 3. Formateo de salida (mucho mÃ¡s ligero)
         $payments = array_map(function ($p) {
-            $monto = $p['amount'];
-            if ($p['payment_method'] === 'mercado_pago') {
-                $monto = ($p['booking_total_payment'] ?? 0) ? ($p['booking_total'] ?? $p['amount']) : ($p['booking_payment'] ?? $p['amount']);
+            $monto = (float)($p['amount'] ?? 0);
+            $metodo = strtolower(str_replace(' ', '_', (string)($p['payment_method'] ?? '')));
+            if ($monto <= 0 && $metodo === 'mercado_pago') {
+                $monto = ($p['booking_total_payment'] ?? 0) ? ($p['booking_total'] ?? 0) : ($p['booking_payment'] ?? 0);
             }
             return [
                 'fecha'           => date("d/m/Y", strtotime($p['date'])),
@@ -391,7 +430,7 @@ class Bookings extends BaseController
             ];
         }, $paymentsResult);
 
-        // Agregar pagos de Mercado Pago que no estén en la tabla payments
+        // Agregar pagos de Mercado Pago que no estÃ©n en la tabla payments
         $mpBookings = $bookingsModel->select('bookings.date, bookings.payment, bookings.total, bookings.total_payment, bookings.payment_method, bookings.id, bookings.name as booking_name, bookings.phone as booking_phone, customers.name as customer_name, customers.phone as customer_phone')
             ->join('customers', 'customers.id = bookings.id_customer', 'left')
             ->join('payments', 'payments.id_booking = bookings.id', 'left')
@@ -418,10 +457,10 @@ class Bookings extends BaseController
             ];
         }
 
-        // Agregar el pago de seña por Mercado Pago si existe y no está en payments
+        // Agregar el pago de seÃ±a por Mercado Pago si existe y no estÃ¡ en payments
         $mpReservations = $bookingsModel->select('bookings.date, bookings.reservation, bookings.total, bookings.total_payment, bookings.id, bookings.name as booking_name, bookings.phone as booking_phone, customers.name as customer_name, customers.phone as customer_phone')
             ->join('customers', 'customers.id = bookings.id_customer', 'left')
-            ->join('payments as pmp', "pmp.id_booking = bookings.id AND pmp.payment_method = 'mercado_pago'", 'left')
+            ->join('payments as pmp', "pmp.id_booking = bookings.id AND (pmp.payment_method = 'mercado_pago' OR pmp.payment_method = 'Mercado Pago')", 'left')
             ->where('bookings.date >=', $data->fechaDesde)
             ->where('bookings.date <=', $data->fechaHasta)
             ->where('bookings.mp', 1)
@@ -443,6 +482,50 @@ class Bookings extends BaseController
                 'bookingId'       => $b['id'],
                 'totalReserva'    => $b['total'],
             ];
+        }
+
+        // Ajuste de consistencia: garantizar que el pagado del reporte no sea menor al pago acumulado de la reserva.
+        $paidByBooking = [];
+        foreach ($payments as $p) {
+            $bid = (int)($p['bookingId'] ?? 0);
+            if ($bid <= 0) continue;
+            $paidByBooking[$bid] = ($paidByBooking[$bid] ?? 0) + (float)($p['pago'] ?? 0);
+        }
+
+        $bookingsRangeQuery = $bookingsModel
+            ->select('bookings.id, bookings.date, bookings.payment, bookings.total, bookings.payment_method, bookings.name as booking_name, bookings.phone as booking_phone, customers.name as customer_name, customers.phone as customer_phone')
+            ->join('customers', 'customers.id = bookings.id_customer', 'left')
+            ->where('bookings.date >=', $data->fechaDesde)
+            ->where('bookings.date <=', $data->fechaHasta)
+            ->where('bookings.annulled', 0);
+
+        if ($user !== 'all') {
+            $bookingsRangeQuery->where('bookings.created_by_user_id', $user);
+        }
+
+        $bookingsRange = $bookingsRangeQuery->findAll();
+
+        foreach ($bookingsRange as $b) {
+            $bookingId = (int)$b['id'];
+            $bookingPaid = (float)($b['payment'] ?? 0);
+            $alreadyPaid = (float)($paidByBooking[$bookingId] ?? 0);
+
+            if ($bookingPaid > ($alreadyPaid + 0.0001)) {
+                $missing = $bookingPaid - $alreadyPaid;
+                $payments[] = [
+                    'fecha'           => date("d/m/Y", strtotime($b['date'])),
+                    'pago'            => $missing,
+                    'usuario'         => 'AJUSTE',
+                    'idUsuario'       => null,
+                    'cliente'         => $b['customer_name'] ?? $b['booking_name'] ?? 'N/A',
+                    'telefonoCliente' => $b['customer_phone'] ?? $b['booking_phone'] ?? 'N/A',
+                    'metodoPago'      => $b['payment_method'] ?? 'N/D',
+                    'idMercadoPago'   => null,
+                    'bookingId'       => $bookingId,
+                    'totalReserva'    => $b['total'],
+                ];
+                $paidByBooking[$bookingId] = $bookingPaid;
+            }
         }
 
         // 4. Respuesta
@@ -531,7 +614,7 @@ class Bookings extends BaseController
                 $slotId = $bookingSlotsModel->insert($slotData, true);
                 if (!$slotId) {
                     $db->transRollback();
-                    return $this->response->setJSON($this->setResponse(409, true, null, 'El horario ya está ocupado o en proceso.'));
+                    return $this->response->setJSON($this->setResponse(409, true, null, 'El horario ya estÃ¡ ocupado o en proceso.'));
                 }
             }
 
@@ -661,7 +744,7 @@ class Bookings extends BaseController
             $slotId = $bookingSlotsModel->insert($slotData, true);
             if (!$slotId) {
                 $db->transRollback();
-                return $this->response->setJSON($this->setResponse(409, true, null, 'El horario ya está ocupado o en proceso.'));
+                return $this->response->setJSON($this->setResponse(409, true, null, 'El horario ya estÃ¡ ocupado o en proceso.'));
             }
 
             $bookingsModel->insert($queryBooking);
@@ -762,9 +845,10 @@ class Bookings extends BaseController
         $payments = [];
 
         foreach ($paymentsResult as $payment) {
-            $monto = $payment['amount'];
-            if ($payment['payment_method'] === 'mercado_pago') {
-                $monto = ($payment['booking_total_payment'] ?? 0) ? ($payment['booking_total'] ?? $payment['amount']) : ($payment['booking_payment'] ?? $payment['amount']);
+            $monto = (float)($payment['amount'] ?? 0);
+            $metodo = strtolower(str_replace(' ', '_', (string)($payment['payment_method'] ?? '')));
+            if ($monto <= 0 && $metodo === 'mercado_pago') {
+                $monto = ($payment['booking_total_payment'] ?? 0) ? ($payment['booking_total'] ?? 0) : ($payment['booking_payment'] ?? 0);
             }
             $pago = [
                 'fecha' => date("d/m/Y", strtotime($payment['date'])),
@@ -813,7 +897,7 @@ class Bookings extends BaseController
 
         $mpReservations = $bookingsModel->select('bookings.date, bookings.reservation, bookings.total, bookings.total_payment, bookings.id, bookings.name as booking_name, bookings.phone as booking_phone, customers.name as customer_name, customers.phone as customer_phone')
             ->join('customers', 'customers.id = bookings.id_customer', 'left')
-            ->join('payments as pmp', "pmp.id_booking = bookings.id AND pmp.payment_method = 'mercado_pago'", 'left')
+            ->join('payments as pmp', "pmp.id_booking = bookings.id AND (pmp.payment_method = 'mercado_pago' OR pmp.payment_method = 'Mercado Pago')", 'left')
             ->where('bookings.date >=', $fechaDesde)
             ->where('bookings.date <=', $fechaHasta)
             ->where('bookings.mp', 1)
@@ -837,9 +921,54 @@ class Bookings extends BaseController
                 'telefonoCliente' => $b['customer_phone'] ?? $b['booking_phone'] ?? 'N/A',
                 'metodoPago' => 'mercado_pago',
                 'idMercadoPago' => null,
+                'bookingId' => $b['id'],
+                'totalReserva' => $b['total'],
             ];
 
             array_push($payments, $pago);
+        }
+
+        // Ajuste de consistencia para PDF: incluir diferencia faltante hasta bookings.payment.
+        $paidByBooking = [];
+        foreach ($payments as $p) {
+            $bid = (int)($p['bookingId'] ?? 0);
+            if ($bid <= 0) continue;
+            $paidByBooking[$bid] = ($paidByBooking[$bid] ?? 0) + (float)($p['pago'] ?? 0);
+        }
+
+        $bookingsRangeQuery = $bookingsModel
+            ->select('bookings.id, bookings.date, bookings.payment, bookings.total, bookings.payment_method, bookings.name as booking_name, bookings.phone as booking_phone, customers.name as customer_name, customers.phone as customer_phone')
+            ->join('customers', 'customers.id = bookings.id_customer', 'left')
+            ->where('bookings.date >=', $fechaDesde)
+            ->where('bookings.date <=', $fechaHasta)
+            ->where('bookings.annulled', 0);
+
+        if ($user !== 'all') {
+            $bookingsRangeQuery->where('bookings.created_by_user_id', $user);
+        }
+
+        $bookingsRange = $bookingsRangeQuery->findAll();
+
+        foreach ($bookingsRange as $b) {
+            $bookingId = (int)$b['id'];
+            $bookingPaid = (float)($b['payment'] ?? 0);
+            $alreadyPaid = (float)($paidByBooking[$bookingId] ?? 0);
+            if ($bookingPaid > ($alreadyPaid + 0.0001)) {
+                $missing = $bookingPaid - $alreadyPaid;
+                $payments[] = [
+                    'fecha' => date("d/m/Y", strtotime($b['date'])),
+                    'pago' => $missing,
+                    'usuario' => 'AJUSTE',
+                    'idUsuario' => null,
+                    'cliente' => $b['customer_name'] ?? $b['booking_name'] ?? 'N/A',
+                    'telefonoCliente' => $b['customer_phone'] ?? $b['booking_phone'] ?? 'N/A',
+                    'metodoPago' => $b['payment_method'] ?? 'N/D',
+                    'idMercadoPago' => null,
+                    'bookingId' => $bookingId,
+                    'totalReserva' => $b['total'],
+                ];
+                $paidByBooking[$bookingId] = $bookingPaid;
+            }
         }
 
         $pdf = $pdfLibrary->renderReports($payments);

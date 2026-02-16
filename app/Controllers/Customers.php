@@ -148,8 +148,15 @@ class Customers extends BaseController
     public function getCustomers()
     {
         $customersModel = new CustomersModel();
-
-        $customers = $customersModel->findAll();
+        $limitParam = $this->request->getGet('limit');
+        $limit = is_numeric($limitParam) ? (int)$limitParam : 0;
+        if ($limit > 0) {
+            // Tope defensivo para evitar consultas excesivas.
+            $limit = min($limit, 200);
+            $customers = $customersModel->orderBy('id', 'DESC')->findAll($limit);
+        } else {
+            $customers = $customersModel->findAll();
+        }
 
         try {
             return  $this->response->setJSON($this->setResponse(null, null, $customers, 'Respuesta exitosa'));
@@ -173,11 +180,10 @@ class Customers extends BaseController
     
     public function setOfferTrue(){
         $customersModel = new CustomersModel();
-        $data = $this->request->getJSON();
         
         try {
-
-            $customersModel->set(['offer' => $data])->where('offer', false)->update();
+            // Aplicar oferta a todos los clientes sin depender del estado previo.
+            $customersModel->builder()->set('offer', 1)->update();
 
             return  $this->response->setJSON($this->setResponse(null, null, null, 'Respuesta exitosa'));
         } catch (\Exception $e) {
@@ -188,11 +194,10 @@ class Customers extends BaseController
 
     public function setOfferFalse(){
         $customersModel = new CustomersModel();
-        $data = $this->request->getJSON();
         
         try {
-
-            $customersModel->set(['offer' => $data])->where('offer', true)->update();
+            // Quitar oferta a todos los clientes sin depender del estado previo.
+            $customersModel->builder()->set('offer', 0)->update();
 
             return  $this->response->setJSON($this->setResponse(null, null, null, 'Respuesta exitosa'));
         } catch (\Exception $e) {

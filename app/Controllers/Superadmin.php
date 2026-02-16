@@ -203,6 +203,7 @@ class Superadmin extends BaseController
     {
         $fieldsModel = new FieldsModel();
         $bookingsModel = new BookingsModel();
+        $paymentsModel = new PaymentsModel();
         $data = $this->request->getJSON();
 
         $getBookings = $bookingsModel->where('date >=', $data->fechaDesde)
@@ -212,8 +213,32 @@ class Superadmin extends BaseController
             ->findAll();
 
         $bookings = [];
+        $bookingIds = array_column($getBookings, 'id');
+        $paidByBooking = [];
+
+        if (!empty($bookingIds)) {
+            $paymentsRows = $paymentsModel
+                ->select('id_booking, SUM(amount) as paid_total')
+                ->whereIn('id_booking', $bookingIds)
+                ->groupBy('id_booking')
+                ->findAll();
+
+            foreach ($paymentsRows as $pr) {
+                $paidByBooking[(int)$pr['id_booking']] = (float)($pr['paid_total'] ?? 0);
+            }
+        }
 
         foreach ($getBookings as $booking) {
+            $bookingId = (int)$booking['id'];
+            $paymentsSum = $paidByBooking[$bookingId] ?? 0.0;
+            $bookingPaid = (float)($booking['payment'] ?? 0);
+            $paid = max($paymentsSum, $bookingPaid);
+            $total = (float)($booking['total'] ?? 0);
+            $difference = $total - $paid;
+            if ($difference < 0) {
+                $difference = 0;
+            }
+
             $reserva = [
                 'id' => $booking['id'],
                 'cancha' => $fieldsModel->getField($booking['id_field'])['name'],
@@ -224,10 +249,10 @@ class Superadmin extends BaseController
                 'creado_por' => $booking['created_by_name'] ?? $booking['created_by_type'] ?? 'N/D',
                 'editado_por' => $booking['edited_by_name'] ?? null,
                 'editado_en' => $booking['edited_at'] ?? null,
-                'pago_total' => $booking['total_payment'] == 1 ? 'Si' : 'No',
+                'pago_total' => $paid >= $total ? 'Si' : 'No',
                 'total_reserva' => $booking['total'],
-                'diferencia' => $booking['diference'],
-                'monto_reserva' => $booking['payment'],
+                'diferencia' => $difference,
+                'monto_reserva' => $paid,
                 'descripcion' => $booking['description'],
                 'metodo_pago' => $booking['payment_method'],
                 'anulada'     => $booking['annulled'],
@@ -248,6 +273,7 @@ class Superadmin extends BaseController
     {
         $fieldsModel = new FieldsModel();
         $bookingsModel = new BookingsModel();
+        $paymentsModel = new PaymentsModel();
         $data = $this->request->getJSON();
 
         $getBookings = $bookingsModel->where('date >=', $data->fechaDesde)
@@ -257,8 +283,32 @@ class Superadmin extends BaseController
             ->findAll();
 
         $bookings = [];
+        $bookingIds = array_column($getBookings, 'id');
+        $paidByBooking = [];
+
+        if (!empty($bookingIds)) {
+            $paymentsRows = $paymentsModel
+                ->select('id_booking, SUM(amount) as paid_total')
+                ->whereIn('id_booking', $bookingIds)
+                ->groupBy('id_booking')
+                ->findAll();
+
+            foreach ($paymentsRows as $pr) {
+                $paidByBooking[(int)$pr['id_booking']] = (float)($pr['paid_total'] ?? 0);
+            }
+        }
 
         foreach ($getBookings as $booking) {
+            $bookingId = (int)$booking['id'];
+            $paymentsSum = $paidByBooking[$bookingId] ?? 0.0;
+            $bookingPaid = (float)($booking['payment'] ?? 0);
+            $paid = max($paymentsSum, $bookingPaid);
+            $total = (float)($booking['total'] ?? 0);
+            $difference = $total - $paid;
+            if ($difference < 0) {
+                $difference = 0;
+            }
+
             $reserva = [
                 'id' => $booking['id'],
                 'cancha' => $fieldsModel->getField($booking['id_field'])['name'],
@@ -269,10 +319,10 @@ class Superadmin extends BaseController
                 'creado_por' => $booking['created_by_name'] ?? $booking['created_by_type'] ?? 'N/D',
                 'editado_por' => $booking['edited_by_name'] ?? null,
                 'editado_en' => $booking['edited_at'] ?? null,
-                'pago_total' => $booking['total_payment'] == 1 ? 'Si' : 'No',
+                'pago_total' => $paid >= $total ? 'Si' : 'No',
                 'total_reserva' => $booking['total'],
-                'diferencia' => $booking['diference'],
-                'monto_reserva' => $booking['payment'],
+                'diferencia' => $difference,
+                'monto_reserva' => $paid,
                 'descripcion' => $booking['description'],
                 'metodo_pago' => $booking['payment_method'],
                 'anulada'     => $booking['annulled'],

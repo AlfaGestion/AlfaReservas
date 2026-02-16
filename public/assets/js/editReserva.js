@@ -142,13 +142,13 @@ document.addEventListener('click', async (e) => {
         if (editBtn) {
             bookingId = editBtn.dataset.id
             if (!bookingId) {
-                alert('No se pudo obtener el ID de la reserva.')
+                alert('No se pudo obtener la informacion de la reserva. Intenta nuevamente.')
                 return
             }
 
             const currentBooking = await getBooking(bookingId)
             if (!currentBooking) {
-                alert('No se pudo obtener la reserva.')
+                alert('No se pudo obtener la informacion de la reserva. Intenta nuevamente.')
                 return
             }
 
@@ -174,13 +174,13 @@ document.addEventListener('click', async (e) => {
 
 
             if (fecha.value == '' || cancha.value == '' || horarioDesde.value == '' || horarioHasta.value == '' || nombre.value == '' || telefono.value == '') {
-                alert('Debe completar todos los datos')
+                alert('Debe completar todos los campos obligatorios.')
                 return;
             }
 
             if (horarioDesde.value == '23' && horarioHasta.value == '00' || horarioDesde.value == '23' && horarioHasta.value == '01' || horarioDesde.value == '22' && horarioHasta.value == '00' || horarioDesde.value == '22' && horarioHasta.value == '01') {
             } else if (parseInt(horarioDesde.value) >= parseInt(horarioHasta.value)) {
-                alert('El horario de comienzo no puede ser mayor al de fin')
+                alert('El horario de inicio no puede ser mayor o igual al horario de fin.')
                 return;
             }
 
@@ -237,7 +237,7 @@ async function updateBooking(data) {
         const responseData = await response.json();
 
         if (!response.ok || responseData.error) {
-            alert(responseData.message || 'El horario ya está ocupado o en proceso.')
+            alert(responseData.message || 'El horario seleccionado ya no esta disponible. Elegi otro e intenta nuevamente.')
             modalSpinner.hide()
             return
         }
@@ -276,7 +276,7 @@ async function getBooking(id) {
             return responseData.data
 
         } else {
-            alert('Algo salió mal. No se pudo obtener la información.');
+            alert('No se pudo obtener la información. Intenta nuevamente.');
         }
 
     } catch (error) {
@@ -299,7 +299,7 @@ async function getTimeFromBookings() {
 
             getFieldForTimeBookings(responseData.data)
         } else {
-            alert('Algo salió mal. No se pudo obtener la información.');
+            alert('No se pudo obtener la información. Intenta nuevamente.');
         }
 
     } catch (error) {
@@ -382,7 +382,7 @@ async function getField(id) {
             return responseData.data
 
         } else {
-            alert('Algo salió mal. No se pudo obtener la información.');
+            alert('No se pudo obtener la información. Intenta nuevamente.');
         }
 
     } catch (error) {
@@ -402,7 +402,7 @@ async function getNocturnalTime() {
 
             return nocturnalTime
         } else {
-            alert('Algo salió mal. No se pudo obtener la información.');
+            alert('No se pudo obtener la información. Intenta nuevamente.');
         }
     } catch (error) {
         console.error('Error:', error);
@@ -458,7 +458,7 @@ async function getRate() {
 
             return responseData.data.value
         } else {
-            alert('Algo salió mal. No se pudo obtener la información.');
+            alert('No se pudo obtener la información. Intenta nuevamente.');
         }
     } catch (error) {
         console.error('Error:', error);

@@ -1,8 +1,25 @@
 const checkCustomersWithOffer = document.getElementById('checkCustomersWithOffer')
+const customersTabButton = document.getElementById('nav-customers-tab')
 
-checkCustomersWithOffer.addEventListener('change', async (e) => {
+let customersTabLoaded = false
+
+async function loadInitialCustomers() {
+    await searchCustomer(`${baseUrl}customers/getCustomers?limit=50`)
+}
+
+if (customersTabButton) {
+    customersTabButton.addEventListener('shown.bs.tab', async () => {
+        if (customersTabLoaded) return
+        customersTabLoaded = true
+        await loadInitialCustomers()
+    })
+}
+
+checkCustomersWithOffer.addEventListener('change', async () => {
     if (checkCustomersWithOffer.checked) {
         await getCustomersWithOffer()
+    } else {
+        await refreshCustomersList()
     }
 })
 
@@ -11,21 +28,36 @@ document.addEventListener('click', async (e) => {
         if (e.target.id == 'searchCustomerButton') {
             checkCustomersWithOffer.checked = false
             const customerPhone = document.getElementById('searchCustomerInput')
-            let customers
 
             if (customerPhone.value == '') {
-                customers = await searchCustomer(`${baseUrl}customers/getCustomers`)
+                await searchCustomer(`${baseUrl}customers/getCustomers?limit=50`)
             } else {
-                customers = await searchCustomer(`${baseUrl}customers/getCustomer/${customerPhone.value}`)
+                await searchCustomer(`${baseUrl}customers/getCustomer/${customerPhone.value}`)
             }
         } else if (e.target.id == 'setOfferTrue') {
-            setOfferTrue(true)
-            
+            await setOfferTrue(true)
         } else if (e.target.id == 'setOfferFalse') {
-            setOfferFalse(false)
+            await setOfferFalse(false)
         }
     }
 })
+
+async function refreshCustomersList() {
+    const customerPhone = document.getElementById('searchCustomerInput')
+    const phoneValue = customerPhone ? customerPhone.value.trim() : ''
+
+    if (checkCustomersWithOffer && checkCustomersWithOffer.checked) {
+        await getCustomersWithOffer()
+        return
+    }
+
+    if (phoneValue !== '') {
+        await searchCustomer(`${baseUrl}customers/getCustomer/${phoneValue}`)
+        return
+    }
+
+    await searchCustomer(`${baseUrl}customers/getCustomers?limit=50`)
+}
 
 async function setOfferTrue(data) {
     try {
@@ -35,19 +67,17 @@ async function setOfferTrue(data) {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify(data)
-        });
+        })
 
-        if(response.ok){
-            alert('Operación exitosa')
+        if (response.ok) {
+            alert('Oferta asignada correctamente.')
+            await refreshCustomersList()
         } else {
-            alert('Ocurrió un error y no se pudo actualizar el valor')
+            alert('No se pudo completar la operación. Intenta nuevamente.')
         }
-
-        location.reload(true)
-
     } catch (error) {
-        console.error('Error:', error);
-        throw error;
+        console.error('Error:', error)
+        throw error
     }
 }
 
@@ -59,54 +89,45 @@ async function setOfferFalse(data) {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify(data)
-        });
+        })
 
-        if(response.ok){
-            alert('Operación exitosa')
+        if (response.ok) {
+            alert('Oferta quitada correctamente.')
+            await refreshCustomersList()
         } else {
-            alert('Ocurrió un error y no se pudo actualizar el valor')
+            alert('No se pudo completar la operación. Intenta nuevamente.')
         }
-        
-        location.reload(true)
-
     } catch (error) {
-        console.error('Error:', error);
-        throw error;
+        console.error('Error:', error)
+        throw error
     }
 }
 
-
 async function getCustomersWithOffer() {
     try {
-        const response = await fetch(`${baseUrl}customers/getCustomersWithOffer`);
-
-        const responseData = await response.json();
+        const response = await fetch(`${baseUrl}customers/getCustomersWithOffer`)
+        const responseData = await response.json()
 
         fillCustomersTable(responseData.data)
-
     } catch (error) {
-        console.error('Error:', error);
-        throw error;
+        console.error('Error:', error)
+        throw error
     }
 }
 
 async function searchCustomer(url) {
     try {
-        const response = await fetch(url);
-
-        const responseData = await response.json();
+        const response = await fetch(url)
+        const responseData = await response.json()
 
         if (responseData.data != '') {
-
             fillCustomersTable(responseData.data)
-
         } else {
-            alert('Algo salió mal. No se pudo obtener la información.');
+            alert('No se pudo obtener la información. Intenta nuevamente.')
         }
-
     } catch (error) {
-        console.error('Error:', error);
-        throw error;
+        console.error('Error:', error)
+        throw error
     }
 }
 
@@ -116,8 +137,6 @@ async function fillCustomersTable(data) {
     let actions = ''
 
     if (Array.isArray(data)) {
-
-
         data.forEach(customer => {
             let offer = ''
             customer.offer == 1 ? offer = 'Si' : offer = 'No'
@@ -148,9 +167,8 @@ async function fillCustomersTable(data) {
             `
         })
     } else if (typeof data === 'object') {
-
-        let offer = '';
-        data.offer == 1 ? offer = 'Si' : offer = 'No';
+        let offer = ''
+        data.offer == 1 ? offer = 'Si' : offer = 'No'
 
         actions = `
             <div class="btn-group" role="group" aria-label="Button group with nested dropdown">
@@ -177,10 +195,9 @@ async function fillCustomersTable(data) {
             </tr>
             `
     } else {
-        console.error('El parámetro data no es un formato válido.');
-        return;
+        console.error('El parametro data no es un formato valido.')
+        return
     }
 
     customersDiv.innerHTML = tr
-
 }

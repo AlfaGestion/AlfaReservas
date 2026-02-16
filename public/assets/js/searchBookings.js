@@ -160,7 +160,7 @@ async function fillTableBookings(data) {
         if (reserva.mp == 0) {
             if (existPending == false) {
                 existPending = true
-                alert('Tiene pagos pendientes ingresantes de Mercado Pago')
+                alert('Hay pagos pendientes de Mercado Pago para confirmar.')
             }
         }
 

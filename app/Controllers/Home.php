@@ -294,6 +294,45 @@ class Home extends BaseController
         ], 'Respuesta exitosa'));
     }
 
+    public function getUpcomingClosure()
+    {
+        $cancelModel = new CancelReservationsModel();
+        $configModel = new ConfigModel();
+
+        $today = date('Y-m-d');
+        $nextClosure = $cancelModel
+            ->where('cancel_date >', $today)
+            ->orderBy('cancel_date', 'ASC')
+            ->first();
+
+        if (!$nextClosure) {
+            return $this->response->setJSON($this->setResponse(null, null, null, 'Sin cierres proximos'));
+        }
+
+        $closureDate = $nextClosure['cancel_date'];
+        $closureTextRow = $configModel->where('clave', 'texto_cierre')->first();
+        $closureText = $closureTextRow['valor'] ?? '';
+        if (!is_string($closureText) || trim($closureText) === '') {
+            $closureText = "Aviso importante\n\n"
+                . "Queremos informarles que el dia <fecha> las canchas permaneceran cerradas.\n"
+                . "Pedimos disculpas por las molestias que esto pueda ocasionar.\n\n"
+                . "De todas formas, ya pueden reservar normalmente las horas para fechas posteriores.\n"
+                . "Muchas gracias por la comprension y por seguir eligiendonos.";
+        }
+
+        $isAllFields = empty($nextClosure['field_id']);
+        $scopeText = $isAllFields
+            ? 'Cierre informado para todas las canchas.'
+            : 'Cierre informado para una cancha especifica.';
+
+        return $this->response->setJSON($this->setResponse(null, null, [
+            'fecha' => $closureDate,
+            'closedAll' => $isAllFields,
+            'message' => $closureText,
+            'scopeText' => $scopeText,
+        ], 'Respuesta exitosa'));
+    }
+
 
     public function setResponse($code = 200, $error = false, $data = null, $message = '')
     {

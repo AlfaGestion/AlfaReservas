@@ -127,11 +127,11 @@
 <?php echo $this->endSection() ?>
 
 <?php echo $this->section('scripts') ?>
-<script src="<?= base_url(PUBLIC_FOLDER . "assets/js/abmSuperadmin.js") ?>"></script>
-<script src="<?= base_url(PUBLIC_FOLDER . "assets/js/searchReports.js?v=" . filemtime(FCPATH . "assets/js/searchReports.js")) ?>"></script>
-<script src="<?= base_url(PUBLIC_FOLDER . "assets/js/searchBookings.js") ?>"></script>
-<script src="<?= base_url(PUBLIC_FOLDER . "assets/js/customers.js") ?>"></script>
-<script src="<?= base_url(PUBLIC_FOLDER . "assets/js/editReserva.js") ?>"></script>
+<script src="<?= base_url(PUBLIC_FOLDER . "assets/js/abmSuperadmin.js?v=" . time()) ?>"></script>
+<script src="<?= base_url(PUBLIC_FOLDER . "assets/js/searchReports.js?v=" . time()) ?>"></script>
+<script src="<?= base_url(PUBLIC_FOLDER . "assets/js/searchBookings.js?v=" . time()) ?>"></script>
+<script src="<?= base_url(PUBLIC_FOLDER . "assets/js/customers.js?v=" . time()) ?>"></script>
+<script src="<?= base_url(PUBLIC_FOLDER . "assets/js/editReserva.js?v=" . time()) ?>"></script>
 
 
 <?php echo $this->endSection() ?>

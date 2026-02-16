@@ -55,7 +55,7 @@
 <?php echo $this->endSection() ?>
 
 <?php echo $this->section('scripts') ?>
-<script src="<?= base_url(PUBLIC_FOLDER . "assets/js/abmSuperadmin.js") ?>"></script>
+<script src="<?= base_url(PUBLIC_FOLDER . "assets/js/abmSuperadmin.js?v=" . time()) ?>"></script>
 <script src="<?= base_url(PUBLIC_FOLDER . "assets/js/searchReports.js") ?>"></script>
 <script src="<?= base_url(PUBLIC_FOLDER . "assets/js/searchBookings.js") ?>"></script>
 <script src="<?= base_url(PUBLIC_FOLDER . "assets/js/customers.js") ?>"></script>

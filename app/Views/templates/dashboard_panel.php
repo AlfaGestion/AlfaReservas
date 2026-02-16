@@ -74,7 +74,7 @@
 
     <?php echo $this->renderSection('scripts') ?>
 
-    <script src="<?= base_url(PUBLIC_FOLDER . "assets/js/config.js") ?>"></script>
+    <script src="<?= base_url(PUBLIC_FOLDER . "assets/js/config.js?v=" . time()) ?>"></script>
     <script>
         let sessionUserId = <?= json_encode(session()->id_user) ?>;
         let sessionUserLogued = <?= json_encode(session()->logueado) ?>;

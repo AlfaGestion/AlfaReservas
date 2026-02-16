@@ -70,11 +70,11 @@ document.addEventListener('click', async (e) => {
             const booking = await getBooking(bookingId)
 
             if (medioPagoSelect.value == '' || inputCompletarPagoReserva.value == '') {
-                return alert('Debe completar todos los campos')
+                return alert('Debe completar todos los campos obligatorios.')
             }
 
             if (Number(inputCompletarPagoReserva.value) > Number(booking.diference)) {
-                return alert('El monto a abonar no puede ser mayor al saldo')
+                return alert('El monto a abonar no puede ser mayor al saldo.')
             }
 
             let data = {
@@ -223,10 +223,10 @@ async function editBooking(data) {
         });
 
         if (response.ok) {
-            alert('Reserva eliminada con éxito')
+            alert('Reserva actualizada correctamente.')
 
         } else {
-            alert('Algo salió mal. No se pudo eliminar la reserva.');
+            alert('No se pudo completar la operacion. Intenta nuevamente.');
         }
 
     } catch (error) {
@@ -247,13 +247,13 @@ async function cancelBooking(data) {
         });
 
         if (response.ok) {
-            alert('Reserva anulada con éxito')
+            alert('Reserva anulada correctamente.')
 
             cancelBookingModal.hide()
             location.reload(true)
 
         } else {
-            alert('Algo salió mal. No se pudo eliminar la reserva.');
+            alert('No se pudo completar la operacion. Intenta nuevamente.');
         }
 
     } catch (error) {
@@ -274,7 +274,7 @@ async function checkCancelReservations(data) {
 
         const responseData = await response.json();
         if (responseData.error) {
-            alert(responseData.message || 'No se pudo verificar reservas.')
+            alert(responseData.message || 'No se pudo completar la operacion. Intenta nuevamente.')
             return null
         }
         return responseData.data
@@ -296,11 +296,11 @@ async function saveCancelReservations(data) {
 
         const responseData = await response.json();
         if (!response.ok || responseData.error) {
-            alert(responseData.message || 'No se pudo guardar la cancelación.')
+            alert(responseData.message || 'No se pudo completar la operacion. Intenta nuevamente.')
             return
         }
 
-        alert('Cancelación registrada con éxito')
+        alert('Cierre de cancha informado correctamente.')
         if (cancelReservationsResult) {
             cancelReservationsResult.innerHTML = ''
         }
@@ -343,7 +343,7 @@ async function deleteCancelReservation(data) {
 
         const responseData = await response.json();
         if (!response.ok || responseData.error) {
-            alert(responseData.message || 'No se pudo eliminar el cierre.')
+            alert(responseData.message || 'No se pudo completar la operacion. Intenta nuevamente.')
             return
         }
     } catch (error) {
@@ -393,11 +393,11 @@ async function saveConfigGeneral(data) {
 
         const responseData = await response.json();
         if (!response.ok || responseData.error) {
-            alert(responseData.message || 'No se pudo guardar la configuración.')
+            alert(responseData.message || 'No se pudo completar la operacion. Intenta nuevamente.')
             return
         }
 
-        alert('Configuración guardada con éxito')
+        alert('Configuracion guardada correctamente.')
     } catch (error) {
         console.error('Error:', error);
         throw error;
@@ -424,14 +424,14 @@ function renderCancelReservationsResult(result, payload) {
     if (bookings.length > 0) {
         html += `
             <div class="alert alert-warning">
-                Se encontraron reservas para ${fechaLabel} (${result.canchaLabel}). Revisá antes de informar el cierre.
+                Se encontraron reservas para ${fechaLabel} (${result.canchaLabel}). Revisa antes de informar el cierre.
             </div>
             <div class="table-responsive">
                 <table class="table table-sm">
                     <thead>
                         <tr>
                             <th>Nombre</th>
-                            <th>Teléfono</th>
+                            <th>Telefono</th>
                             <th>Cancha</th>
                             <th>Horario</th>
                         </tr>
@@ -513,7 +513,7 @@ async function completePayment(url, data) {
             }
 
         } else {
-            alert('Algo salió mal. No se pudo ingresar el pago.');
+            alert('No se pudo completar la operacion. Intenta nuevamente.');
         }
 
     } catch (error) {
@@ -533,11 +533,11 @@ async function saveRate(url, data) {
         });
 
         if (response.ok) {
-            alert('Valor ingresado con éxito')
+            alert('Porcentaje actualizado correctamente.')
             location.reload(true)
 
         } else {
-            alert('Algo salió mal. No se pudo ingresar el valor.');
+            alert('No se pudo completar la operacion. Intenta nuevamente.');
         }
 
     } catch (error) {
@@ -557,11 +557,11 @@ async function saveOfferRate(url, data) {
         });
 
         if (response.ok) {
-            alert('Valor ingresado con éxito')
+            alert('Oferta actualizada correctamente.')
             location.reload(true)
 
         } else {
-            alert('Algo salió mal. No se pudo ingresar el valor.');
+            alert('No se pudo completar la operacion. Intenta nuevamente.');
         }
 
     } catch (error) {
@@ -582,7 +582,7 @@ async function getBooking(id) {
             return responseData.data
 
         } else {
-            alert('Algo salió mal. No se pudo obtener la información.');
+            alert('No se pudo obtener la informacion. Intenta nuevamente.');
         }
 
     } catch (error) {
@@ -602,7 +602,7 @@ async function getEditField(id) {
             fillDiv(responseData.data)
 
         } else {
-            alert('Algo salió mal. No se pudo obtener la información.');
+            alert('No se pudo obtener la informacion. Intenta nuevamente.');
         }
 
     } catch (error) {
@@ -643,7 +643,7 @@ function fillDiv(field) {
 
                 <div class="input-group mb-3">
                     <span class="input-group-text" id="basic-addon4">Tipo de cancha</span>
-                    <input type="text" class="form-control" value="${field.field_type}" name="tipoCancha" placeholder="Ingrese el tipo de cancha (fútbol 5, 7, 11)" aria-label="Tipo cancha" aria-describedby="basic-addon4">
+                    <input type="text" class="form-control" value="${field.field_type}" name="tipoCancha" placeholder="Ingrese el tipo de cancha (futbol 5, 7, 11)" aria-label="Tipo cancha" aria-describedby="basic-addon4">
                 </div>
 
                 <div class="form-check form-switch">
@@ -652,13 +652,13 @@ function fillDiv(field) {
                 </div>
 
                 <div class="input-group mb-3">
-                    <span class="input-group-text">Valor sin iluminación</span>
-                    <input type="text" class="form-control" value="${field.value}" name="valor" placeholder="Ingrese valor por hora sin iluminación" aria-label="Valor">
+                    <span class="input-group-text">Valor sin iluminacion</span>
+                    <input type="text" class="form-control" value="${field.value}" name="valor" placeholder="Ingrese valor por hora sin iluminacion" aria-label="Valor">
                 </div>
 
                 <div class="input-group mb-3">
-                    <span class="input-group-text">Valor con iluminación</span>
-                    <input type="text" class="form-control" value="${field.ilumination_value}" name="valorIluminacion" placeholder="Ingrese valor por hora con iluminación" aria-label="Valor">
+                    <span class="input-group-text">Valor con iluminacion</span>
+                    <input type="text" class="form-control" value="${field.ilumination_value}" name="valorIluminacion" placeholder="Ingrese valor por hora con iluminacion" aria-label="Valor">
                 </div>
 
                 <button type="submit" class="btn btn-success">Guardar</button>

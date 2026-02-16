@@ -10,10 +10,64 @@ use App\Models\CancelReservationsModel;
 use App\Models\ConfigModel;
 use App\Models\CustomersModel;
 use App\Models\MercadoPagoModel;
+use App\Models\MercadoPagoKeysModel;
+use App\Models\PaymentsModel;
 use App\Models\RateModel;
 
 class MercadoPago extends BaseController
 {
+    private function getMercadoPagoPaidAmount($paymentId)
+    {
+        if (empty($paymentId)) {
+            return null;
+        }
+
+        $mpKeysModel = new MercadoPagoKeysModel();
+        $mpKeys = $mpKeysModel->first();
+        $token = $mpKeys['access_token'] ?? null;
+        if (!$token) {
+            return null;
+        }
+
+        $url = 'https://api.mercadopago.com/v1/payments/' . urlencode((string)$paymentId);
+        $ch = curl_init($url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+            'Authorization: Bearer ' . $token,
+            'Content-Type: application/json',
+        ]);
+
+        $verifySsl = getenv('MP_VERIFY_SSL');
+        if ($verifySsl === '0' || strtolower((string)$verifySsl) === 'false') {
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+        }
+
+        $response = curl_exec($ch);
+        if ($response === false) {
+            curl_close($ch);
+            return null;
+        }
+
+        $statusCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        if ((int)$statusCode < 200 || (int)$statusCode >= 300) {
+            return null;
+        }
+
+        $payload = json_decode($response, true);
+        if (!is_array($payload)) {
+            return null;
+        }
+
+        $amount = $payload['transaction_amount'] ?? null;
+        if ($amount === null || $amount === '') {
+            return null;
+        }
+
+        return (float)$amount;
+    }
+
     private function isClosedForDateField($date, $fieldId)
     {
         if (empty($date)) {
@@ -58,7 +112,7 @@ class MercadoPago extends BaseController
 
         $message = "Nueva reserva\n\n"
             . "Nombre: {$booking['name']}\n"
-            . "Teléfono: {$booking['phone']}\n"
+            . "TelÃ©fono: {$booking['phone']}\n"
             . "Localidad: " . ($localidad !== '' ? $localidad : 'N/D') . "\n"
             . "Fecha: {$fecha}\n"
             . "Horario: {$horario}\n"
@@ -86,139 +140,144 @@ class MercadoPago extends BaseController
 
         $email->setFrom($fromEmail, $fromName);
         $email->setTo($toEmail);
-        $email->setSubject('Nueva reserva');
+        $subjectName = trim((string)($booking['name'] ?? 'Cliente'));
+        $subjectDate = $booking['date'] ? date('d/m/Y', strtotime($booking['date'])) : 'Sin fecha';
+        $email->setSubject("Reserva: {$subjectName} - {$subjectDate}");
         $email->setMessage($message);
 
         if (!$email->send()) {
             log_message('error', 'No se pudo enviar email de reserva: ' . $email->printDebugger(['headers']));
         }
     }
-
     public function setPreference()
     {
-        $rateModel = new RateModel();
-        $rateRow = $rateModel->first();
-        $bookingsModel = new BookingsModel();
-        $data = $this->request->getJSON();
-        $booking = $data->booking ?? null;
-        $montoTotal = $data->amount ?? 0;
-        $bookingSlotsModel = new BookingSlotsModel();
-        $localidad = null;
-        if (is_object($booking) && isset($booking->localidad)) {
-            $localidad = $booking->localidad;
-        } elseif (is_array($booking) && isset($booking['localidad'])) {
-            $localidad = $booking['localidad'];
-        }
-        $this->ensureLocalityExists($localidad);
-
-        if (!$rateRow || !isset($rateRow['value'])) {
-            return $this->response->setJSON($this->setResponse(400, true, null, 'No existe tasa de reserva configurada.'));
-        }
-        if (!$booking) {
-            return $this->response->setJSON($this->setResponse(400, true, null, 'Faltan datos de la reserva.'));
-        }
-
-        $bookingDate = $booking->fecha ?? $booking['fecha'] ?? null;
-        $bookingField = $booking->cancha ?? $booking['cancha'] ?? null;
-        if ($this->isClosedForDateField($bookingDate, $bookingField)) {
-            return $this->response->setJSON($this->setResponse(409, true, null, 'No se puede reservar: hay un cierre informado para esa fecha.'));
-        }
-
-        $rate = $rateRow['value'];
-        $montoParcial = (floatval($montoTotal) * floatval($rate)) / 100;
-
-        // Crear slot pendiente antes de generar la preferencia
-        $slotData = [
-            'date' => $booking->fecha ?? $booking['fecha'] ?? null,
-            'id_field' => $booking->cancha ?? $booking['cancha'] ?? null,
-            'time_from' => $booking->horarioDesde ?? $booking['horarioDesde'] ?? null,
-            'time_until' => $booking->horarioHasta ?? $booking['horarioHasta'] ?? null,
-            'status' => 'pending',
-            'active' => 1,
-            'expires_at' => date('Y-m-d H:i:s', strtotime('+5 minutes')),
-            'created_at' => date('Y-m-d H:i:s'),
-        ];
-
-        $slotId = $bookingSlotsModel->insert($slotData, true);
-        if (!$slotId) {
-            return $this->response->setJSON($this->setResponse(409, true, null, 'El horario ya está ocupado o en proceso.'));
-        }
-
-        $mp = new MercadoPagoLibrary();
-        $mp->setPreference('Pago total de cancha', $montoTotal, 1);
-        $preferenceIdTotal = $mp->preferenceId;
-
-        $mp = new MercadoPagoLibrary();
-        $mp->setPreference('Reserva de cancha', $montoParcial, 1);
-        $preferenceIdParcial = $mp->preferenceId;
-
-        $preferences = [
-            'preferenceIdTotal' => $preferenceIdTotal,
-            'preferenceIdParcial' => $preferenceIdParcial,
-        ];
-
-        $bookingArr = json_decode(json_encode($booking), true);
-        $bookingArr['preferenceIdParcial'] = $preferenceIdParcial;
-        $bookingArr['preferenceIdTotal'] = $preferenceIdTotal;
-        $bookingArr['slotId'] = $slotId;
-
-        // Crear reserva provisional antes del checkout para no depender de la redirección de retorno.
-        $existingBooking = $bookingsModel->where('id_preference_parcial', $preferenceIdParcial)
-            ->orWhere('id_preference_total', $preferenceIdTotal)
-            ->first();
-
-        if (!$existingBooking) {
-            $bookingsModel->insert([
-                'date' => $bookingArr['fecha'] ?? null,
-                'id_field' => $bookingArr['cancha'] ?? null,
-                'time_from' => $bookingArr['horarioDesde'] ?? null,
-                'time_until' => $bookingArr['horarioHasta'] ?? null,
-                'name' => $bookingArr['nombre'] ?? null,
-                'phone' => $bookingArr['telefono'] ?? null,
-                'locality' => $bookingArr['localidad'] ?? null,
-                'payment' => 0,
-                'approved' => 0,
-                'total' => $bookingArr['total'] ?? 0,
-                'parcial' => $bookingArr['parcial'] ?? 0,
-                'diference' => $bookingArr['total'] ?? 0,
-                'reservation' => 0,
-                'total_payment' => 0,
-                'payment_method' => 'Mercado Pago',
-                'id_preference_parcial' => $preferenceIdParcial,
-                'id_preference_total' => $preferenceIdTotal,
-                'use_offer' => $bookingArr['oferta'] ?? 0,
-                'booking_time' => date("Y-m-d H:i:s"),
-                'mp' => 0,
-                'annulled' => 0,
-                'created_by_type' => 'CLIENTE',
-                'created_by_name' => 'CLIENTE',
-                'created_by_user_id' => null,
-            ]);
-
-            $bookingId = $bookingsModel->getInsertID();
-            if ($bookingId) {
-                $bookingSlotsModel->update($slotId, ['booking_id' => $bookingId]);
-            }
-        }
-
-        $intents = session()->get('mp_intents') ?? [];
-        $intents[$preferenceIdParcial] = ['booking' => $bookingArr, 'paid_type' => 'parcial'];
-        $intents[$preferenceIdTotal] = ['booking' => $bookingArr, 'paid_type' => 'total'];
-        session()->set('mp_intents', $intents);
-
         try {
-            return  $this->response->setJSON($this->setResponse(null, null, $preferences, 'Respuesta exitosa'));
-        } catch (\Exception $e) {
-            return  $this->response->setJSON($this->setResponse(404, true, null, $e->getMessage()));
+            $rateModel = new RateModel();
+            $rateRow = $rateModel->first();
+            $bookingsModel = new BookingsModel();
+            $data = $this->request->getJSON();
+            $booking = $data->booking ?? null;
+            $montoTotal = $data->amount ?? 0;
+            $bookingSlotsModel = new BookingSlotsModel();
+            $localidad = null;
+            if (is_object($booking) && isset($booking->localidad)) {
+                $localidad = $booking->localidad;
+            } elseif (is_array($booking) && isset($booking['localidad'])) {
+                $localidad = $booking['localidad'];
+            }
+            $this->ensureLocalityExists($localidad);
+
+            if (!$rateRow || !isset($rateRow['value'])) {
+                return $this->response->setJSON($this->setResponse(400, true, null, 'No existe tasa de reserva configurada.'));
+            }
+            if (!$booking) {
+                return $this->response->setJSON($this->setResponse(400, true, null, 'Faltan datos de la reserva.'));
+            }
+
+            $bookingDate = $booking->fecha ?? $booking['fecha'] ?? null;
+            $bookingField = $booking->cancha ?? $booking['cancha'] ?? null;
+            if ($this->isClosedForDateField($bookingDate, $bookingField)) {
+                return $this->response->setJSON($this->setResponse(409, true, null, 'No se puede reservar: hay un cierre informado para esa fecha.'));
+            }
+
+            $rate = $rateRow['value'];
+            $montoParcial = (floatval($montoTotal) * floatval($rate)) / 100;
+
+            // Crear slot pendiente antes de generar la preferencia
+            $slotData = [
+                'date' => $booking->fecha ?? $booking['fecha'] ?? null,
+                'id_field' => $booking->cancha ?? $booking['cancha'] ?? null,
+                'time_from' => $booking->horarioDesde ?? $booking['horarioDesde'] ?? null,
+                'time_until' => $booking->horarioHasta ?? $booking['horarioHasta'] ?? null,
+                'status' => 'pending',
+                'active' => 1,
+                'expires_at' => date('Y-m-d H:i:s', strtotime('+5 minutes')),
+                'created_at' => date('Y-m-d H:i:s'),
+            ];
+
+            $slotId = $bookingSlotsModel->insert($slotData, true);
+            if (!$slotId) {
+                return $this->response->setJSON($this->setResponse(409, true, null, 'El horario ya fue tomado por otra reserva. ActualizÃ¡ e intentÃ¡ nuevamente.'));
+            }
+
+            $mp = new MercadoPagoLibrary();
+            $mp->setPreference('Pago total de cancha', $montoTotal, 1);
+            $preferenceIdTotal = $mp->preferenceId;
+
+            $mp = new MercadoPagoLibrary();
+            $mp->setPreference('Reserva de cancha', $montoParcial, 1);
+            $preferenceIdParcial = $mp->preferenceId;
+
+            $preferences = [
+                'preferenceIdTotal' => $preferenceIdTotal,
+                'preferenceIdParcial' => $preferenceIdParcial,
+            ];
+
+            $bookingArr = json_decode(json_encode($booking), true);
+            $bookingArr['preferenceIdParcial'] = $preferenceIdParcial;
+            $bookingArr['preferenceIdTotal'] = $preferenceIdTotal;
+            $bookingArr['slotId'] = $slotId;
+
+            // Crear reserva provisional antes del checkout para no depender de la redirecciÃ³n de retorno.
+            $existingBooking = $bookingsModel->where('id_preference_parcial', $preferenceIdParcial)
+                ->orWhere('id_preference_total', $preferenceIdTotal)
+                ->first();
+            $bookingId = $existingBooking['id'] ?? null;
+
+            if (!$existingBooking) {
+                $bookingsModel->insert([
+                    'date' => $bookingArr['fecha'] ?? null,
+                    'id_field' => $bookingArr['cancha'] ?? null,
+                    'time_from' => $bookingArr['horarioDesde'] ?? null,
+                    'time_until' => $bookingArr['horarioHasta'] ?? null,
+                    'name' => $bookingArr['nombre'] ?? null,
+                    'phone' => $bookingArr['telefono'] ?? null,
+                    'locality' => $bookingArr['localidad'] ?? null,
+                    'payment' => 0,
+                    'approved' => 0,
+                    'total' => $bookingArr['total'] ?? 0,
+                    'parcial' => $bookingArr['parcial'] ?? 0,
+                    'diference' => $bookingArr['total'] ?? 0,
+                    'reservation' => 0,
+                    'total_payment' => 0,
+                    'payment_method' => 'Mercado Pago',
+                    'id_preference_parcial' => $preferenceIdParcial,
+                    'id_preference_total' => $preferenceIdTotal,
+                    'use_offer' => $bookingArr['oferta'] ?? 0,
+                    'booking_time' => date("Y-m-d H:i:s"),
+                    'mp' => 0,
+                    'annulled' => 0,
+                    'created_by_type' => 'CLIENTE',
+                    'created_by_name' => 'CLIENTE',
+                    'created_by_user_id' => null,
+                ]);
+
+                $bookingId = $bookingsModel->getInsertID();
+                if ($bookingId) {
+                    $bookingSlotsModel->update($slotId, ['booking_id' => $bookingId]);
+                }
+            }
+            $preferences['bookingId'] = $bookingId;
+            $bookingArr['bookingId'] = $bookingId;
+
+            $intents = session()->get('mp_intents') ?? [];
+            $intents[$preferenceIdParcial] = ['booking' => $bookingArr, 'paid_type' => 'parcial'];
+            $intents[$preferenceIdTotal] = ['booking' => $bookingArr, 'paid_type' => 'total'];
+            session()->set('mp_intents', $intents);
+
+            return $this->response->setJSON($this->setResponse(null, null, $preferences, 'Respuesta exitosa'));
+        } catch (\Throwable $e) {
+            log_message('error', 'Error en setPreference: ' . $e->getMessage());
+            return $this->response->setJSON($this->setResponse(409, true, null, 'El horario ya fue tomado por otra reserva. ActualizÃ¡ e intentÃ¡ nuevamente.'));
         }
     }
-
     public function success()
     {
         $mercadoPagoModel = new MercadoPagoModel();
         $bookingsModel = new BookingsModel();
         $customersModel = new CustomersModel();
         $bookingSlotsModel = new BookingSlotsModel();
+        $paymentsModel = new PaymentsModel();
 
         $preferenceId = $this->request->getVar('preference_id');
 
@@ -368,6 +427,11 @@ class MercadoPago extends BaseController
                 $paid = $existingBooking['total'];
             }
 
+            $paidByGateway = $this->getMercadoPagoPaidAmount($data['payment_id'] ?? null);
+            if ($paidByGateway !== null && $paidByGateway > 0) {
+                $paid = $paidByGateway;
+            }
+
             $total_payment = $paid == $existingBooking['total'];
 
         $customer = $customersModel->where('phone', $existingBooking['phone'])->first();
@@ -406,6 +470,31 @@ class MercadoPago extends BaseController
 
             $data['id_booking'] = $existingBooking['id'];
             $mercadoPagoModel->insert($data);
+
+            $alreadyStoredMpPayment = null;
+            if (!empty($data['payment_id'])) {
+                $alreadyStoredMpPayment = $paymentsModel
+                    ->where('id_booking', $existingBooking['id'])
+                    ->where('id_mercado_pago', $data['payment_id'])
+                    ->first();
+            }
+
+            if (!$alreadyStoredMpPayment) {
+                try {
+                    $paymentsModel->insert([
+                        'id_user' => session()->get('id_user') ?: null,
+                        'id_booking' => $existingBooking['id'],
+                        'id_customer' => $customerId,
+                        'id_mercado_pago' => $data['payment_id'] ?? null,
+                        'amount' => $paid,
+                        'payment_method' => 'mercado_pago',
+                        'date' => date('Y-m-d'),
+                        'created_at' => date('Y-m-d H:i:s'),
+                    ]);
+                } catch (\Throwable $e) {
+                    log_message('error', 'No se pudo registrar pago MP en payments para booking ' . $existingBooking['id'] . ': ' . $e->getMessage());
+                }
+            }
 
             $booking = $bookingsModel->find($existingBooking['id']);
             $mercadoPago =  $mercadoPagoModel->where('id_booking', $existingBooking['id'])->first();
@@ -476,6 +565,153 @@ class MercadoPago extends BaseController
         return view('mercadoPago/failure');
     }
 
+    public function cancelPendingMpReservation()
+    {
+        $bookingsModel = new BookingsModel();
+        $bookingSlotsModel = new BookingSlotsModel();
+        $data = $this->request->getJSON();
+        $bookingId = $data->bookingId ?? null;
+        $prefParcial = $data->preferenceIdParcial ?? null;
+        $prefTotal = $data->preferenceIdTotal ?? null;
+        $telefono = $data->telefono ?? null;
+        $fecha = $data->fecha ?? null;
+        $cancha = $data->cancha ?? null;
+        $horarioDesde = $data->horarioDesde ?? null;
+        $horarioHasta = $data->horarioHasta ?? null;
+
+        if (!$bookingId && !$prefParcial && !$prefTotal && (!$fecha || !$cancha || !$horarioDesde || !$horarioHasta)) {
+            return $this->response->setJSON($this->setResponse(400, true, null, 'No se recibieron datos para cancelar.'));
+        }
+
+        try {
+            $bookings = [];
+            $bookingIds = [];
+            $slotPairs = [];
+
+            if ($bookingId) {
+                $b = $bookingsModel->find($bookingId);
+                if ($b) {
+                    $bookings[] = $b;
+                }
+            }
+
+            if ($prefParcial || $prefTotal) {
+                $query = $bookingsModel->groupStart();
+                if ($prefParcial) {
+                    $query->where('id_preference_parcial', $prefParcial);
+                }
+                if ($prefTotal) {
+                    $query->orWhere('id_preference_total', $prefTotal);
+                }
+                $query->groupEnd();
+                $prefBookings = $query->findAll();
+                if (!empty($prefBookings)) {
+                    $bookings = array_merge($bookings, $prefBookings);
+                }
+            }
+
+            if ($fecha && $cancha && $horarioDesde && $horarioHasta) {
+                $slotBookings = $bookingsModel->where('date', $fecha)
+                    ->where('id_field', $cancha)
+                    ->where('time_from', $horarioDesde)
+                    ->where('time_until', $horarioHasta)
+                    ->findAll();
+                if (!empty($slotBookings)) {
+                    $bookings = array_merge($bookings, $slotBookings);
+                }
+            }
+
+            $uniqueBookings = [];
+            foreach ($bookings as $booking) {
+                $id = (int)($booking['id'] ?? 0);
+                if ($id <= 0 || isset($uniqueBookings[$id])) {
+                    continue;
+                }
+                $uniqueBookings[$id] = $booking;
+            }
+            $bookings = array_values($uniqueBookings);
+
+            foreach ($bookings as $booking) {
+                $isApproved = isset($booking['approved']) && (int)$booking['approved'] === 1;
+                if ($isApproved) {
+                    continue;
+                }
+
+                $bookingIds[] = (int)$booking['id'];
+                $slotPairs[] = [
+                    'date' => $booking['date'],
+                    'id_field' => $booking['id_field'],
+                    'time_from' => $booking['time_from'],
+                    'time_until' => $booking['time_until'],
+                ];
+            }
+
+            if ($fecha && $cancha && $horarioDesde && $horarioHasta) {
+                $slotPairs[] = [
+                    'date' => $fecha,
+                    'id_field' => $cancha,
+                    'time_from' => $horarioDesde,
+                    'time_until' => $horarioHasta,
+                ];
+            }
+
+            if (!empty($bookingIds)) {
+                $bookingIds = array_values(array_unique($bookingIds));
+                $bookingsModel->whereIn('id', $bookingIds)
+                    ->where('approved !=', 1)
+                    ->set(['annulled' => 1, 'approved' => 0])
+                    ->update();
+
+                $bookingSlotsModel->whereIn('booking_id', $bookingIds)
+                    ->where('active', 1)
+                    ->set(['active' => 0, 'status' => 'cancelled'])
+                    ->update();
+            }
+
+            if (!empty($slotPairs)) {
+                foreach ($slotPairs as $pair) {
+                    $bookingSlotsModel->where('date', $pair['date'])
+                        ->where('id_field', $pair['id_field'])
+                        ->where('time_from', $pair['time_from'])
+                        ->where('time_until', $pair['time_until'])
+                        ->where('active', 1)
+                        ->set(['active' => 0, 'status' => 'cancelled'])
+                        ->update();
+
+                    $bookingsModel->where('date', $pair['date'])
+                        ->where('id_field', $pair['id_field'])
+                        ->where('time_from', $pair['time_from'])
+                        ->where('time_until', $pair['time_until'])
+                        ->where('approved !=', 1)
+                        ->set(['annulled' => 1, 'approved' => 0])
+                        ->update();
+                }
+            }
+
+            $intents = session()->get('mp_intents') ?? [];
+            if ($prefParcial && isset($intents[$prefParcial])) {
+                $slotId = $intents[$prefParcial]['booking']['slotId'] ?? null;
+                if ($slotId) {
+                    $bookingSlotsModel->update($slotId, ['active' => 0, 'status' => 'cancelled']);
+                }
+                unset($intents[$prefParcial]);
+            }
+            if ($prefTotal && isset($intents[$prefTotal])) {
+                $slotId = $intents[$prefTotal]['booking']['slotId'] ?? null;
+                if ($slotId) {
+                    $bookingSlotsModel->update($slotId, ['active' => 0, 'status' => 'cancelled']);
+                }
+                unset($intents[$prefTotal]);
+            }
+            session()->set('mp_intents', $intents);
+
+            // Respuesta idempotente: si no hubo excepciÃ³n, consideramos cancelaciÃ³n procesada.
+            return $this->response->setJSON($this->setResponse(null, null, ['cancelled' => true], 'Reserva pendiente cancelada.'));
+        } catch (\Exception $e) {
+            return $this->response->setJSON($this->setResponse(500, true, null, $e->getMessage()));
+        }
+    }
+
     public function setResponse($code = 200, $error = false, $data = null, $message = '')
     {
         $response = [
@@ -493,3 +729,4 @@ class MercadoPago extends BaseController
         return view('superadmin/reportes');
     }
 }
+
