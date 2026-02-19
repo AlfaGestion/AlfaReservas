@@ -307,7 +307,12 @@ $mpKeys = $mpKeysModel->first();
     <?php echo $this->section('scripts') ?>
     <script src="https://sdk.mercadopago.com/js/v2"></script>
 
-    <script src="<?= base_url(PUBLIC_FOLDER . "assets/js/formReserva.js?v=" . filemtime(FCPATH . "assets/js/formReserva.js")) ?>"></script>
+    <?php
+    $formReservaRelativePath = "assets/js/formReserva.js";
+    $formReservaPath = FCPATH . $formReservaRelativePath;
+    $formReservaVersion = is_file($formReservaPath) ? filemtime($formReservaPath) : time();
+    ?>
+    <script src="<?= base_url(PUBLIC_FOLDER . $formReservaRelativePath . "?v=" . $formReservaVersion) ?>"></script>
     <script>
         let esDomingo = <?php echo json_encode($esDomingo); ?>;
     </script>
