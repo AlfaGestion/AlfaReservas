@@ -1,0 +1,19 @@
+﻿CI_ENVIRONMENT = development
+
+#app.baseURL = 'http://localhost:8080/'
+app.baseURL = 'https://audrina-unexpectable-swaggeringly.ngrok-free.dev/'
+
+#app.apiBaseURL = 'http://localhost:8080/'
+app.apiBaseURL = 'https://audrina-unexpectable-swaggeringly.ngrok-free.dev/'
+MP_VERIFY_SSL = 0
+MP_BACK_URL_BASE = 'https://audrina-unexpectable-swaggeringly.ngrok-free.dev/'
+
+# Database
+
+database.default.hostname = localhost
+database.default.database = reserva-canchas
+database.default.username = root
+database.default.password =
+database.default.DBDriver = MySQLi
+database.default.DBPrefix =
+database.default.port = 3306
