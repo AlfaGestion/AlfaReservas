@@ -112,7 +112,7 @@ class MercadoPago extends BaseController
 
         $message = "Nueva reserva\n\n"
             . "Nombre: {$booking['name']}\n"
-            . "TelÃ©fono: {$booking['phone']}\n"
+            . "Telefono: {$booking['phone']}\n"
             . "Localidad: " . ($localidad !== '' ? $localidad : 'N/D') . "\n"
             . "Fecha: {$fecha}\n"
             . "Horario: {$horario}\n"
@@ -197,7 +197,7 @@ class MercadoPago extends BaseController
 
             $slotId = $bookingSlotsModel->insert($slotData, true);
             if (!$slotId) {
-                return $this->response->setJSON($this->setResponse(409, true, null, 'El horario ya fue tomado por otra reserva. ActualizÃ¡ e intentÃ¡ nuevamente.'));
+                return $this->response->setJSON($this->setResponse(409, true, null, 'El horario ya fue tomado por otra reserva. Actualiza e intenta nuevamente.'));
             }
 
             $mp = new MercadoPagoLibrary();
@@ -218,7 +218,7 @@ class MercadoPago extends BaseController
             $bookingArr['preferenceIdTotal'] = $preferenceIdTotal;
             $bookingArr['slotId'] = $slotId;
 
-            // Crear reserva provisional antes del checkout para no depender de la redirecciÃ³n de retorno.
+            // Crear reserva provisional antes del checkout para no depender de la redireccion de retorno.
             $existingBooking = $bookingsModel->where('id_preference_parcial', $preferenceIdParcial)
                 ->orWhere('id_preference_total', $preferenceIdTotal)
                 ->first();
@@ -268,7 +268,7 @@ class MercadoPago extends BaseController
             return $this->response->setJSON($this->setResponse(null, null, $preferences, 'Respuesta exitosa'));
         } catch (\Throwable $e) {
             log_message('error', 'Error en setPreference: ' . $e->getMessage());
-            return $this->response->setJSON($this->setResponse(409, true, null, 'El horario ya fue tomado por otra reserva. ActualizÃ¡ e intentÃ¡ nuevamente.'));
+            return $this->response->setJSON($this->setResponse(409, true, null, 'El horario ya fue tomado por otra reserva. Actualiza e intenta nuevamente.'));
         }
     }
     public function success()
@@ -705,7 +705,7 @@ class MercadoPago extends BaseController
             }
             session()->set('mp_intents', $intents);
 
-            // Respuesta idempotente: si no hubo excepciÃ³n, consideramos cancelaciÃ³n procesada.
+            // Respuesta idempotente: si no hubo excepcion, consideramos cancelacion procesada.
             return $this->response->setJSON($this->setResponse(null, null, ['cancelled' => true], 'Reserva pendiente cancelada.'));
         } catch (\Exception $e) {
             return $this->response->setJSON($this->setResponse(500, true, null, $e->getMessage()));

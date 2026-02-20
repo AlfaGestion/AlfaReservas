@@ -8,7 +8,9 @@ use App\Models\FieldsModel;
 use App\Models\CancelReservationsModel;
 use App\Models\ConfigModel;
 use App\Models\LocalitiesModel;
+use App\Models\BookingSlotsModel;
 use App\Models\MercadoPagoKeysModel;
+use App\Models\MercadoPagoModel;
 use App\Models\OffersModel;
 use App\Models\PaymentsModel;
 use App\Models\RateModel;
@@ -17,6 +19,114 @@ use App\Models\UsersModel;
 
 class Superadmin extends BaseController
 {
+    private function cleanupExpiredPendingBookings(): void
+    {
+        $bookingsModel = new BookingsModel();
+        $bookingSlotsModel = new BookingSlotsModel();
+        $mercadoPagoModel = new MercadoPagoModel();
+        $paymentsModel = new PaymentsModel();
+
+        $now = date('Y-m-d H:i:s');
+        $threshold = date('Y-m-d H:i:s', strtotime('-5 minutes'));
+
+        // 1) Tomar los slots pending vencidos para identificar reservas candidatas.
+        $expiredPendingSlots = $bookingSlotsModel
+            ->select('booking_id')
+            ->where('active', 1)
+            ->where('status', 'pending')
+            ->where('expires_at <', $now)
+            ->findAll();
+
+        // 2) Expirar esos slots.
+        $bookingSlotsModel->where('active', 1)
+            ->where('status', 'pending')
+            ->where('expires_at <', $now)
+            ->set(['active' => 0, 'status' => 'expired'])
+            ->update();
+
+        if (empty($expiredPendingSlots)) {
+            return;
+        }
+
+        $candidateIds = [];
+        foreach ($expiredPendingSlots as $slot) {
+            $bookingId = (int)($slot['booking_id'] ?? 0);
+            if ($bookingId > 0) {
+                $candidateIds[$bookingId] = true;
+            }
+        }
+        $candidateIds = array_keys($candidateIds);
+
+        // Fallback: reservas provisionales vencidas por booking_time (aunque no tengan slot enlazado).
+        $staleBookings = $bookingsModel
+            ->select('id')
+            ->where('annulled', 0)
+            ->where('mp', 0)
+            ->where('payment <=', 0)
+            ->where('booking_time <', $threshold)
+            ->groupStart()
+            ->where('approved', 0)
+            ->orWhere('approved', null)
+            ->groupEnd()
+            ->findAll();
+
+        foreach ($staleBookings as $row) {
+            $bookingId = (int)($row['id'] ?? 0);
+            if ($bookingId > 0) {
+                $candidateIds[$bookingId] = true;
+            }
+        }
+
+        $candidateIds = array_keys($candidateIds);
+
+        if (empty($candidateIds)) {
+            return;
+        }
+        // 3) Solo reservas provisionales sin pago confirmado.
+        $candidates = $bookingsModel->whereIn('id', $candidateIds)
+            ->where('annulled', 0)
+            ->where('mp', 0)
+            ->where('payment <=', 0)
+            ->groupStart()
+            ->where('approved', 0)
+            ->orWhere('approved', null)
+            ->groupEnd()
+            ->findAll();
+
+        if (empty($candidates)) {
+            return;
+        }
+
+        $idsToDelete = [];
+        foreach ($candidates as $booking) {
+            $bookingId = (int)$booking['id'];
+
+            $hasApprovedMp = $mercadoPagoModel->where('id_booking', $bookingId)
+                ->where('status', 'approved')
+                ->first();
+
+            $hasPayment = $paymentsModel->where('id_booking', $bookingId)->first();
+
+            if (!$hasApprovedMp && !$hasPayment) {
+                $idsToDelete[] = $bookingId;
+            }
+        }
+
+        if (empty($idsToDelete)) {
+            return;
+        }
+
+        // 4) Limpiar registros relacionados y luego la reserva.
+        $bookingSlotsModel->whereIn('booking_id', $idsToDelete)
+            ->where('active', 1)
+            ->set(['active' => 0, 'status' => 'expired'])
+            ->update();
+
+        $paymentsModel->whereIn('id_booking', $idsToDelete)->delete();
+        $mercadoPagoModel->whereIn('id_booking', $idsToDelete)->delete();
+        $bookingsModel->delete($idsToDelete);
+    }
+
     public function index()
     {
         $bookingsModel = new BookingsModel();
@@ -201,6 +311,8 @@ class Superadmin extends BaseController
 
     public function getActiveBookings()
     {
+        $this->cleanupExpiredPendingBookings();
+
         $fieldsModel = new FieldsModel();
         $bookingsModel = new BookingsModel();
         $paymentsModel = new PaymentsModel();

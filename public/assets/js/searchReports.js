@@ -207,12 +207,14 @@ document.addEventListener('click', async (e) => {
                     <title>Resumen</title>
                     <style>
                         * { box-sizing: border-box; }
-                        body { font-family: Arial, sans-serif; color: #111; padding: 24px; }
-                        h1 { font-size: 20px; margin: 0 0 12px 0; }
-                        .meta { font-size: 12px; color: #444; margin-bottom: 16px; }
-                        .resume { border: 1px solid #d0d0d0; padding: 16px; border-radius: 6px; display: inline-block; min-width: 280px; }
-                        .resume p { margin: 6px 0; }
-                        .resume hr { border: none; border-top: 1px solid #ddd; margin: 10px 0; }
+                        @page { size: 80mm auto; margin: 3mm; }
+                        html, body { width: 74mm; margin: 0; padding: 0; }
+                        body { font-family: Arial, sans-serif; color: #111; }
+                        h1 { font-size: 16px; margin: 0 0 8px 0; }
+                        .meta { font-size: 11px; color: #444; margin-bottom: 10px; }
+                        .resume { border: 1px solid #d0d0d0; padding: 8px; border-radius: 4px; width: 100%; }
+                        .resume p { margin: 4px 0; font-size: 12px; }
+                        .resume hr { border: none; border-top: 1px solid #ddd; margin: 8px 0; }
                     </style>
                 </head>
                 <body>

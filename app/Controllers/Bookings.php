@@ -62,7 +62,7 @@ class Bookings extends BaseController
 
         $message = "Nueva reserva\n\n"
             . "Nombre: {$booking['name']}\n"
-            . "TelÃ©fono: {$booking['phone']}\n"
+            . "Teléfono: {$booking['phone']}\n"
             . "Localidad: " . ($localidad !== '' ? $localidad : 'N/D') . "\n"
             . "Fecha: {$fecha}\n"
             . "Horario: {$horario}\n"
@@ -131,7 +131,7 @@ class Bookings extends BaseController
             'use_offer'             => $data->oferta,
             'booking_time'          => date("Y-m-d H:i:s"),
             'mp'                    => 0,
-            'annulled'              => 0, // Aseguramos que este nuevo registro no estÃ© anulado
+            'annulled'              => 0, // Aseguramos que este nuevo registro no esté anulado
             'created_by_type'       => 'CLIENTE',
             'created_by_name'       => 'CLIENTE',
             'created_by_user_id'    => null,
@@ -205,7 +205,7 @@ class Bookings extends BaseController
                 $slotId = $bookingSlotsModel->insert($slotData, true);
                 if (!$slotId) {
                     $db->transRollback();
-                    return $this->response->setJSON($this->setResponse(409, true, null, 'El horario ya estÃ¡ en proceso de reserva.'));
+                    return $this->response->setJSON($this->setResponse(409, true, null, 'El horario ya está en proceso de reserva.'));
                 }
 
                 $bookingsModel->insert($queryBooking);
@@ -247,7 +247,7 @@ class Bookings extends BaseController
                 ->set(['active' => 0, 'status' => 'expired'])
                 ->update();
 
-            // 1) Reservas reales (tabla bookings): siempre bloquean si no estÃ¡n anuladas.
+            // 1) Reservas reales (tabla bookings): siempre bloquean si no están anuladas.
             $bookings = $bookingsModel->where('date', $fecha)
                 ->where('annulled', 0)
                 ->findAll();
@@ -377,7 +377,7 @@ class Bookings extends BaseController
         $bookingsModel = new BookingsModel();
         $data = $this->request->getJSON();
 
-        // 1. Limpieza bÃ¡sica de filtros
+        // 1. Limpieza básica de filtros
         $user = (empty($data->user) || $data->user == '') ? 'all' : $data->user;
 
         // 2. Consulta con JOINs para traer datos de Usuario y Cliente de un solo golpe
@@ -409,7 +409,7 @@ class Bookings extends BaseController
 
         $paymentsResult = $query->findAll();
 
-        // 3. Formateo de salida (mucho mÃ¡s ligero)
+        // 3. Formateo de salida (mucho más ligero)
         $payments = array_map(function ($p) {
             $monto = (float)($p['amount'] ?? 0);
             $metodo = strtolower(str_replace(' ', '_', (string)($p['payment_method'] ?? '')));
@@ -430,7 +430,7 @@ class Bookings extends BaseController
             ];
         }, $paymentsResult);
 
-        // Agregar pagos de Mercado Pago que no estÃ©n en la tabla payments
+        // Agregar pagos de Mercado Pago que no estén en la tabla payments
         $mpBookings = $bookingsModel->select('bookings.date, bookings.payment, bookings.total, bookings.total_payment, bookings.payment_method, bookings.id, bookings.name as booking_name, bookings.phone as booking_phone, customers.name as customer_name, customers.phone as customer_phone')
             ->join('customers', 'customers.id = bookings.id_customer', 'left')
             ->join('payments', 'payments.id_booking = bookings.id', 'left')
@@ -457,7 +457,7 @@ class Bookings extends BaseController
             ];
         }
 
-        // Agregar el pago de seÃ±a por Mercado Pago si existe y no estÃ¡ en payments
+        // Agregar el pago de seña por Mercado Pago si existe y no está en payments
         $mpReservations = $bookingsModel->select('bookings.date, bookings.reservation, bookings.total, bookings.total_payment, bookings.id, bookings.name as booking_name, bookings.phone as booking_phone, customers.name as customer_name, customers.phone as customer_phone')
             ->join('customers', 'customers.id = bookings.id_customer', 'left')
             ->join('payments as pmp', "pmp.id_booking = bookings.id AND (pmp.payment_method = 'mercado_pago' OR pmp.payment_method = 'Mercado Pago')", 'left')
@@ -614,7 +614,7 @@ class Bookings extends BaseController
                 $slotId = $bookingSlotsModel->insert($slotData, true);
                 if (!$slotId) {
                     $db->transRollback();
-                    return $this->response->setJSON($this->setResponse(409, true, null, 'El horario ya estÃ¡ ocupado o en proceso.'));
+                    return $this->response->setJSON($this->setResponse(409, true, null, 'El horario ya está ocupado o en proceso.'));
                 }
             }
 
@@ -701,10 +701,6 @@ class Bookings extends BaseController
         $this->ensureLocalityExists($data->localidad ?? null);
         $pagoTotal = $data->monto == $data->total ? 1 : 0;
 
-        if ($this->isClosedForDateField($data->fecha, $data->cancha)) {
-            return $this->response->setJSON($this->setResponse(409, true, null, 'No se puede reservar: hay un cierre informado para esa fecha.'));
-        }
-
         $queryBooking = [
             'date'            => $data->fecha,
             'id_field'        => $data->cancha,
@@ -744,10 +740,14 @@ class Bookings extends BaseController
             $slotId = $bookingSlotsModel->insert($slotData, true);
             if (!$slotId) {
                 $db->transRollback();
-                return $this->response->setJSON($this->setResponse(409, true, null, 'El horario ya estÃ¡ ocupado o en proceso.'));
+                return $this->response->setJSON($this->setResponse(409, true, null, 'Ya existe una reserva activa o en proceso para esa fecha, cancha y horario.'));
             }
 
-            $bookingsModel->insert($queryBooking);
+            $insertOk = $bookingsModel->insert($queryBooking);
+            if (!$insertOk) {
+                $db->transRollback();
+                return $this->response->setJSON($this->setResponse(500, true, null, 'No se pudo guardar la reserva. Verifica los datos e intenta nuevamente.'));
+            }
             $bookingId = $bookingsModel->getInsertID();
             $bookingSlotsModel->update($slotId, ['booking_id' => $bookingId]);
 

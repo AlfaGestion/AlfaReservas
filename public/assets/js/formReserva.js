@@ -403,9 +403,8 @@ document.addEventListener('click', async (e) => {
 
             saveAdminBooking(data)
         } else if (e.target.id == 'confirmarAdminReserva') {
-            if (closureInfo && closureInfo.closedAll) {
-                alert('No se puede reservar en una fecha con cierre informado.')
-                return
+            if (closureInfo && (closureInfo.closedAll || (Array.isArray(closureInfo.closedFields) && closureInfo.closedFields.length > 0))) {
+                alert('Aviso: hay un cierre informado para esta fecha. Como admin, la reserva se puede guardar igual.')
             }
             fetchFormInfo(data)
 
@@ -535,10 +534,21 @@ async function saveAdminBooking(data) {
             body: JSON.stringify(data)
         });
 
-        const responseData = await response.json();
+        if (response.redirected || (response.url && response.url.includes('/auth/login'))) {
+            alert('Tu sesion vencio. Volve a iniciar sesion para guardar la reserva.')
+            return
+        }
+
+        let responseData = null
+        try {
+            responseData = await response.json();
+        } catch (parseError) {
+            alert('No se pudo procesar la respuesta del servidor. Si la sesion expiro, inicia sesion nuevamente.')
+            return
+        }
 
         if (!response.ok || responseData.error) {
-            alert(responseData.message || 'El horario seleccionado ya no esta disponible. Elegi otro e intenta nuevamente.')
+            alert(responseData.message || 'No se pudo guardar la reserva. Puede que ya exista una reserva activa para esa cancha y horario.')
             return
         }
 
