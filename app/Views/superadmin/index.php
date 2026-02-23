@@ -59,6 +59,7 @@
                     <div class="tab-pane fade" id="nav-customers" role="tabpanel" aria-labelledby="nav-customers-tab" tabindex="0">
                         <?= view('superadmin/tabCustomers') ?>
                     </div>
+
                 <?php endif; ?>
 
                 <div class="tab-pane fade" id="nav-reports" role="tabpanel" aria-labelledby="nav-reports-tab" tabindex="0">

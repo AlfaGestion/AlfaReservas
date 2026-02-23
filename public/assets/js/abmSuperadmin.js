@@ -29,12 +29,21 @@ const toggleCancelReservations = document.getElementById('toggleCancelReservatio
 const cancelReservationsPanel = document.getElementById('cancelReservationsPanel')
 const cancelDateInput = document.getElementById('cancelDate')
 const cancelFieldSelect = document.getElementById('cancelField')
+const cancelFieldHint = document.getElementById('cancelFieldHint')
+const confirmCancelReservationsButton = document.getElementById('confirmCancelReservations')
+const cancelEditCancelReservationButton = document.getElementById('cancelEditCancelReservation')
 const cancelReservationsResult = document.getElementById('cancelReservationsResult')
 const existingClosures = document.getElementById('existingClosures')
+const closuresTabDateRangeSelect = document.getElementById('closuresTabDateRange')
+const closuresTabDateFromInput = document.getElementById('closuresTabDateFrom')
+const closuresTabDateToInput = document.getElementById('closuresTabDateTo')
+const closuresTabFieldSelect = document.getElementById('closuresTabField')
+const closuresTabList = document.getElementById('closuresTabList')
 const configPanel = document.getElementById('configPanel')
 const closureTextConfig = document.getElementById('closureTextConfig')
 const bookingEmailConfig = document.getElementById('bookingEmailConfig')
 let idBooking
+let editingCancelReservationId = null
 
 if (adminTabs && adminTabs._element) {
     adminTabs._element.addEventListener("shown.bs.tab", (e) => {
@@ -46,9 +55,14 @@ if (adminTabs && adminTabs._element) {
 if (cancelDateInput) {
     const today = new Date().toISOString().split('T')[0]
     cancelDateInput.value = today
+    cancelDateInput.min = today
     if (cancelFieldSelect) {
         refreshExistingClosures()
+        refreshCancelFieldAllAvailability()
     }
+}
+if (closuresTabDateRangeSelect && closuresTabDateFromInput && closuresTabDateToInput) {
+    applyClosuresDateRange(closuresTabDateRangeSelect.value || 'MA')
 }
 
 if (selectEditField) {
@@ -146,41 +160,73 @@ document.addEventListener('click', async (e) => {
             if (cancelReservationsPanel) {
                 cancelReservationsPanel.classList.toggle('d-none')
                 if (!cancelReservationsPanel.classList.contains('d-none')) {
-                    refreshExistingClosures()
+                    await refreshExistingClosures()
+                    await refreshCancelFieldAllAvailability()
+                    cancelReservationsPanel.scrollIntoView({ behavior: 'smooth', block: 'start' })
                 }
             }
         } else if (e.target.id == 'toggleConfigPanel') {
             if (configPanel) {
                 configPanel.classList.toggle('d-none')
             }
+        } else if (e.target.id == 'closuresTabSearch' || e.target.id == 'cancel-closures-list-tab') {
+            await refreshClosuresTab()
         } else if (e.target.id == 'closeCancelReservations') {
             if (cancelReservationsPanel) {
                 cancelReservationsPanel.classList.add('d-none')
             }
+            resetCancelReservationEditMode()
         } else if (e.target.id == 'closeConfigPanel') {
             if (configPanel) {
                 configPanel.classList.add('d-none')
             }
+        } else if (e.target.id == 'cancelEditCancelReservation') {
+            resetCancelReservationEditMode()
         } else if (e.target.id == 'confirmCancelReservations') {
             if (!cancelDateInput || !cancelFieldSelect) return
             const payload = {
                 fecha: cancelDateInput.value,
                 cancha: cancelFieldSelect.value,
             }
+            const today = new Date().toISOString().split('T')[0]
+            if (payload.fecha < today) {
+                alert('No se pueden informar cierres con fecha anterior a hoy.')
+                return
+            }
             const force = e.target.dataset.force === '1'
+            if (editingCancelReservationId) {
+                const updated = await updateCancelReservation({
+                    id: editingCancelReservationId,
+                    fecha: payload.fecha,
+                    cancha: payload.cancha,
+                })
+                if (updated) {
+                    resetCancelReservationEditMode()
+                    await refreshExistingClosures()
+                    await refreshClosuresTab()
+                }
+                return
+            }
             if (!force) {
                 const result = await checkCancelReservations(payload)
                 if (!result) return
                 const bookings = result.bookings || []
                 if (bookings.length === 0) {
-                    await saveCancelReservations(payload)
+                    const saved = await saveCancelReservations(payload)
+                    if (saved) {
+                        await refreshExistingClosures()
+                        await refreshClosuresTab()
+                    }
                 } else {
                     renderCancelReservationsResult(result)
                 }
                 return
             }
-            await saveCancelReservations(payload)
-            await refreshExistingClosures()
+            const saved = await saveCancelReservations(payload)
+            if (saved) {
+                await refreshExistingClosures()
+                await refreshClosuresTab()
+            }
         } else if (e.target.id == 'saveConfigGeneral') {
             const payload = {
                 textoCierre: closureTextConfig ? closureTextConfig.value : '',
@@ -201,15 +247,51 @@ document.addEventListener('click', async (e) => {
             if (!id) return
             await deleteCancelReservation({ id })
             await refreshExistingClosures()
+            await refreshClosuresTab()
+        }
+        const editBtn = e.target.closest('.edit-closure')
+        if (editBtn) {
+            const id = editBtn.dataset.id
+            const fecha = editBtn.dataset.fecha
+            const cancha = editBtn.dataset.cancha
+            if (!id || !fecha || !cancha) return
+            editingCancelReservationId = id
+            if (cancelDateInput) cancelDateInput.value = fecha
+            if (cancelFieldSelect) cancelFieldSelect.value = cancha
+            if (confirmCancelReservationsButton) confirmCancelReservationsButton.textContent = 'Guardar cambios'
+            if (cancelEditCancelReservationButton) cancelEditCancelReservationButton.classList.remove('d-none')
+            await refreshCancelFieldAllAvailability()
+            cancelReservationsPanel?.scrollIntoView({ behavior: 'smooth', block: 'start' })
         }
     }
 })
 
 if (cancelDateInput) {
-    cancelDateInput.addEventListener('change', refreshExistingClosures)
+    cancelDateInput.addEventListener('change', async () => {
+        await refreshExistingClosures()
+        await refreshCancelFieldAllAvailability()
+    })
 }
 if (cancelFieldSelect) {
-    cancelFieldSelect.addEventListener('change', refreshExistingClosures)
+    cancelFieldSelect.addEventListener('change', async () => {
+        await refreshExistingClosures()
+        await refreshCancelFieldAllAvailability()
+    })
+}
+if (closuresTabDateRangeSelect) {
+    closuresTabDateRangeSelect.addEventListener('input', () => {
+        applyClosuresDateRange(closuresTabDateRangeSelect.value)
+        refreshClosuresTab()
+    })
+}
+if (closuresTabDateFromInput) {
+    closuresTabDateFromInput.addEventListener('change', refreshClosuresTab)
+}
+if (closuresTabDateToInput) {
+    closuresTabDateToInput.addEventListener('change', refreshClosuresTab)
+}
+if (closuresTabFieldSelect) {
+    closuresTabFieldSelect.addEventListener('change', refreshClosuresTab)
 }
 
 async function editBooking(data) {
@@ -297,13 +379,14 @@ async function saveCancelReservations(data) {
         const responseData = await response.json();
         if (!response.ok || responseData.error) {
             alert(responseData.message || 'No se pudo completar la operacion. Intenta nuevamente.')
-            return
+            return false
         }
 
         alert('Cierre de cancha informado correctamente.')
         if (cancelReservationsResult) {
             cancelReservationsResult.innerHTML = ''
         }
+        return true
     } catch (error) {
         console.error('Error:', error);
         throw error;
@@ -351,11 +434,34 @@ async function deleteCancelReservation(data) {
     }
 }
 
+async function updateCancelReservation(data) {
+    try {
+        const response = await fetch(`${baseUrl}updateCancelReservation`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(data)
+        });
+
+        const responseData = await response.json();
+        if (!response.ok || responseData.error) {
+            alert(responseData.message || 'No se pudo completar la operacion. Intenta nuevamente.')
+            return false
+        }
+        alert('Cierre actualizado correctamente.')
+        return true
+    } catch (error) {
+        console.error('Error:', error);
+        return false
+    }
+}
+
 async function refreshExistingClosures() {
     if (!cancelDateInput || !existingClosures) return
     const payload = {
         fecha: cancelDateInput.value,
-        cancha: cancelFieldSelect ? cancelFieldSelect.value : 'all',
+        cancha: 'all',
     }
     const rows = await getCancelReservations(payload)
     if (!rows || rows.length === 0) {
@@ -368,17 +474,272 @@ async function refreshExistingClosures() {
         if (!y || !m || !d) return dateStr
         return `${d}/${m}/${y}`
     }
+    const isPastDate = (dateStr) => {
+        if (!dateStr) return false
+        const today = new Date()
+        today.setHours(0, 0, 0, 0)
+        const d = new Date(`${dateStr}T00:00:00`)
+        return d < today
+    }
     existingClosures.innerHTML = `
-        <div class="alert alert-info mb-2">Cierres informados para esta fecha/cancha</div>
+        <div class="alert alert-info mb-2">Cierres informados para esta fecha</div>
         <ul class="list-group">
             ${rows.map(r => `
                 <li class="list-group-item d-flex justify-content-between align-items-center">
                     <span>${formatDate(r.cancel_date)} - ${r.field_label} (por ${r.user_name})</span>
+                    ${isPastDate(r.cancel_date)
+            ? '<span class="badge text-bg-secondary">Sin acciones</span>'
+            : `<div class="d-flex gap-2">
+                    <button type="button" class="btn btn-sm btn-outline-primary edit-closure" data-id="${r.id}" data-fecha="${r.cancel_date}" data-cancha="${r.field_id ?? 'all'}">Editar</button>
                     <button type="button" class="btn btn-sm btn-outline-danger delete-closure" data-id="${r.id}">Cancelar</button>
+               </div>`}
                 </li>
             `).join('')}
         </ul>
     `
+}
+
+async function refreshClosuresTab() {
+    if (!closuresTabList) return
+
+    const payload = {
+        fechaDesde: closuresTabDateFromInput ? closuresTabDateFromInput.value : '',
+        fechaHasta: closuresTabDateToInput ? closuresTabDateToInput.value : '',
+        cancha: closuresTabFieldSelect ? closuresTabFieldSelect.value : 'all',
+    }
+
+    const rows = await getCancelReservations(payload)
+    if (!rows || rows.length === 0) {
+        closuresTabList.innerHTML = '<div class="alert alert-light border">No hay cierres programados para el filtro seleccionado.</div>'
+        return
+    }
+
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const parseDate = (dateStr) => {
+        if (!dateStr) return null
+        const d = new Date(`${dateStr}T00:00:00`)
+        return Number.isNaN(d.getTime()) ? null : d
+    }
+    const orderedRows = [...rows].sort((a, b) => {
+        const dateA = parseDate(a.cancel_date)
+        const dateB = parseDate(b.cancel_date)
+        if (!dateA && !dateB) return 0
+        if (!dateA) return 1
+        if (!dateB) return -1
+
+        const aIsPast = dateA < today
+        const bIsPast = dateB < today
+        if (aIsPast !== bIsPast) {
+            return aIsPast ? 1 : -1
+        }
+
+        if (!aIsPast) {
+            // Hoy y futuras: de la mas cercana a la mas lejana.
+            return dateA - dateB
+        }
+
+        // Pasadas al final: de la mas reciente a la mas antigua.
+        return dateB - dateA
+    })
+
+    const formatDate = (dateStr) => {
+        if (!dateStr || typeof dateStr !== 'string' || !dateStr.includes('-')) return dateStr || ''
+        const [y, m, d] = dateStr.split('-')
+        if (!y || !m || !d) return dateStr
+        return `${d}/${m}/${y}`
+    }
+    const isPastDate = (dateStr) => {
+        if (!dateStr) return false
+        const today = new Date()
+        today.setHours(0, 0, 0, 0)
+        const d = new Date(`${dateStr}T00:00:00`)
+        return d < today
+    }
+
+    const groups = orderedRows.reduce((acc, row) => {
+        const key = row.cancel_date || ''
+        if (!acc[key]) acc[key] = []
+        acc[key].push(row)
+        return acc
+    }, {})
+    const groupDates = Object.keys(groups)
+
+    closuresTabList.innerHTML = `
+        <div class="accordion" id="closuresByDateAccordion">
+            ${groupDates.map((date, index) => {
+            const groupRows = groups[date]
+            const uniqueFields = [...new Set(groupRows.map(r => r.field_label).filter(Boolean))]
+            const fieldsText = uniqueFields.join(', ')
+            const collapseId = `closureDateCollapse${index}`
+            const headingId = `closureDateHeading${index}`
+            const isPast = isPastDate(date)
+            return `
+                    <div class="accordion-item">
+                        <h2 class="accordion-header" id="${headingId}">
+                            <button class="accordion-button ${index === 0 ? '' : 'collapsed'}" type="button" data-bs-toggle="collapse" data-bs-target="#${collapseId}" aria-expanded="${index === 0 ? 'true' : 'false'}" aria-controls="${collapseId}">
+                                <div class="d-flex w-100 justify-content-between align-items-center pe-2">
+                                    <span><strong>${formatDate(date)}</strong> - ${fieldsText || 'Sin cancha'}</span>
+                                    <span class="badge text-bg-secondary">${groupRows.length} cierre(s)</span>
+                                </div>
+                            </button>
+                        </h2>
+                        <div id="${collapseId}" class="accordion-collapse collapse ${index === 0 ? 'show' : ''}" aria-labelledby="${headingId}" data-bs-parent="#closuresByDateAccordion">
+                            <div class="accordion-body p-0">
+                                <div class="table-responsive">
+                                    <table class="table align-middle table-striped mb-0">
+                                        <thead>
+                                            <tr>
+                                                <th>Cancha</th>
+                                                <th>Informado por</th>
+                                                <th>Accion</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            ${groupRows.map(r => `
+                                                <tr>
+                                                    <td>${r.field_label}</td>
+                                                    <td>${r.user_name}</td>
+                                                    <td>
+                                                        ${isPast
+                    ? '<span class="badge text-bg-secondary">Sin acciones</span>'
+                    : `<div class="d-flex gap-2">
+                                                                <button type="button" class="btn btn-sm btn-outline-primary edit-closure" data-id="${r.id}" data-fecha="${r.cancel_date}" data-cancha="${r.field_id ?? 'all'}">Editar</button>
+                                                                <button type="button" class="btn btn-sm btn-outline-danger delete-closure" data-id="${r.id}">Cancelar</button>
+                                                           </div>`}
+                                                    </td>
+                                                </tr>
+                                            `).join('')}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `
+        }).join('')}
+        </div>
+    `
+}
+
+function resetCancelReservationEditMode() {
+    editingCancelReservationId = null
+    if (confirmCancelReservationsButton) {
+        confirmCancelReservationsButton.textContent = 'Aceptar'
+        delete confirmCancelReservationsButton.dataset.force
+    }
+    if (cancelEditCancelReservationButton) {
+        cancelEditCancelReservationButton.classList.add('d-none')
+    }
+    refreshCancelFieldAllAvailability()
+}
+
+async function refreshCancelFieldAllAvailability() {
+    if (!cancelDateInput || !cancelFieldSelect) return
+    const allOption = cancelFieldSelect.querySelector('option[value="all"]')
+    if (!allOption) return
+
+    const selectedDate = cancelDateInput.value
+    if (!selectedDate) {
+        allOption.disabled = false
+        if (cancelFieldHint) cancelFieldHint.textContent = ''
+        return
+    }
+
+    const rows = await getCancelReservations({
+        fecha: selectedDate,
+        cancha: 'all',
+    })
+
+    let allowAll = true
+    let hint = ''
+
+    if (editingCancelReservationId) {
+        if (rows.length > 0) {
+            const firstId = rows.reduce((min, r) => {
+                const rowId = Number(r.id || 0)
+                return min === null || rowId < min ? rowId : min
+            }, null)
+            allowAll = firstId === null || Number(editingCancelReservationId) === firstId
+            if (!allowAll) {
+                hint = 'Solo el primer cierre de la fecha puede cambiarse a "Todas".'
+            }
+        }
+    } else {
+        if (rows.length > 0) {
+            allowAll = false
+            const hasAllClosure = rows.some(r => r.field_id === null || r.field_id === '' || String(r.field_id).toLowerCase() === 'all')
+            if (hasAllClosure) {
+                hint = 'Ya existe un cierre para "Todas" en esta fecha.'
+            } else {
+                hint = 'Ya existen cierres puntuales en esta fecha. Edite el primer registro si desea pasar a "Todas".'
+            }
+        }
+    }
+
+    allOption.disabled = !allowAll
+    if (!allowAll && cancelFieldSelect.value === 'all') {
+        const firstEnabledOption = Array.from(cancelFieldSelect.options).find(opt => !opt.disabled && opt.value !== 'all')
+        if (firstEnabledOption) {
+            cancelFieldSelect.value = firstEnabledOption.value
+        }
+    }
+    if (cancelFieldHint) {
+        cancelFieldHint.textContent = hint
+    }
+}
+
+function applyClosuresDateRange(rangeValue) {
+    if (!closuresTabDateFromInput || !closuresTabDateToInput) return
+
+    const fechaActual = new Date()
+    const toISO = (d) => d.toISOString().split('T')[0]
+
+    if (rangeValue === 'FD') {
+        const hoy = toISO(fechaActual)
+        closuresTabDateFromInput.value = hoy
+        closuresTabDateToInput.value = hoy
+        return
+    }
+
+    if (rangeValue === 'MA') {
+        const primerDiaDelMes = new Date(fechaActual.getFullYear(), fechaActual.getMonth(), 1)
+        const ultimoDiaDelMes = new Date(fechaActual.getFullYear(), fechaActual.getMonth() + 1, 0)
+        closuresTabDateFromInput.value = toISO(primerDiaDelMes)
+        closuresTabDateToInput.value = toISO(ultimoDiaDelMes)
+        return
+    }
+
+    if (rangeValue === 'MP') {
+        const fechaMesPasado = new Date(fechaActual)
+        fechaMesPasado.setMonth(fechaMesPasado.getMonth() - 1)
+        const primerDiaDelMesPasado = new Date(fechaMesPasado.getFullYear(), fechaMesPasado.getMonth(), 1)
+        const ultimoDiaDelMesPasado = new Date(fechaMesPasado.getFullYear(), fechaMesPasado.getMonth() + 1, 0)
+        closuresTabDateFromInput.value = toISO(primerDiaDelMesPasado)
+        closuresTabDateToInput.value = toISO(ultimoDiaDelMesPasado)
+        return
+    }
+
+    if (rangeValue === 'SA') {
+        const fechaInicioSemanaActual = new Date(fechaActual)
+        const diaSemanaActual = fechaActual.getDay()
+        fechaInicioSemanaActual.setDate(fechaActual.getDate() - diaSemanaActual + 1)
+        const fechaFinSemanaActual = new Date(fechaInicioSemanaActual)
+        fechaFinSemanaActual.setDate(fechaInicioSemanaActual.getDate() + 6)
+        closuresTabDateFromInput.value = toISO(fechaInicioSemanaActual)
+        closuresTabDateToInput.value = toISO(fechaFinSemanaActual)
+        return
+    }
+
+    if (rangeValue === 'SP') {
+        const fechaInicioSemanaPasada = new Date(fechaActual)
+        const diaSemanaActual = fechaActual.getDay()
+        fechaInicioSemanaPasada.setDate(fechaActual.getDate() - diaSemanaActual - 6)
+        const fechaFinSemanaPasada = new Date(fechaInicioSemanaPasada)
+        fechaFinSemanaPasada.setDate(fechaInicioSemanaPasada.getDate() + 6)
+        closuresTabDateFromInput.value = toISO(fechaInicioSemanaPasada)
+        closuresTabDateToInput.value = toISO(fechaFinSemanaPasada)
+    }
 }
 
 async function saveConfigGeneral(data) {

@@ -505,8 +505,35 @@ class Superadmin extends BaseController
             return $this->response->setJSON($this->setResponse(400, true, null, 'Debe ingresar una fecha.'));
         }
 
+        $today = date('Y-m-d');
+        if ($date < $today) {
+            return $this->response->setJSON($this->setResponse(400, true, null, 'No se pueden informar cierres con fecha anterior a hoy.'));
+        }
+
         $fieldsModel = new FieldsModel();
         $cancelModel = new CancelReservationsModel();
+
+        $sameDateRows = $cancelModel->where('cancel_date', $date)->findAll();
+        $hasAllClosure = false;
+        $hasSameFieldClosure = false;
+        foreach ($sameDateRows as $row) {
+            if (empty($row['field_id'])) {
+                $hasAllClosure = true;
+            }
+            if ($field !== 'all' && (int)($row['field_id'] ?? 0) === (int)$field) {
+                $hasSameFieldClosure = true;
+            }
+        }
+
+        if ($field === 'all' && !empty($sameDateRows)) {
+            return $this->response->setJSON($this->setResponse(409, true, null, 'Ya existen cierres para esa fecha. Solo el primer registro puede editarse a "Todas".'));
+        }
+        if ($field !== 'all' && $hasAllClosure) {
+            return $this->response->setJSON($this->setResponse(409, true, null, 'Ya existe un cierre para Todas las canchas en esa fecha.'));
+        }
+        if ($field !== 'all' && $hasSameFieldClosure) {
+            return $this->response->setJSON($this->setResponse(409, true, null, 'Ya existe un cierre para esa cancha en esa fecha.'));
+        }
 
         $fieldLabel = 'Todas';
         $fieldId = null;
@@ -537,20 +564,120 @@ class Superadmin extends BaseController
     {
         $data = $this->request->getJSON();
         $date = $data->fecha ?? null;
+        $dateFrom = $data->fechaDesde ?? null;
+        $dateTo = $data->fechaHasta ?? null;
         $field = $data->cancha ?? 'all';
 
+        $cancelModel = new CancelReservationsModel();
+        $query = $cancelModel;
+        if ($date) {
+            $query = $query->where('cancel_date', $date);
+        } elseif ($dateFrom || $dateTo) {
+            if ($dateFrom) {
+                $query = $query->where('cancel_date >=', $dateFrom);
+            }
+            if ($dateTo) {
+                $query = $query->where('cancel_date <=', $dateTo);
+            }
+        } else {
+            $query = $query->where('cancel_date >=', date('Y-m-d'));
+        }
+        if ($field !== 'all') {
+            $query = $query->where('field_id', (int)$field);
+        }
+        $rows = $query
+            ->orderBy('cancel_date', 'DESC')
+            ->orderBy('field_label', 'ASC')
+            ->findAll();
+
+        return $this->response->setJSON($this->setResponse(null, null, $rows, 'Respuesta exitosa'));
+    }
+
+    public function updateCancelReservation()
+    {
+        $data = $this->request->getJSON();
+        $id = $data->id ?? null;
+        $date = $data->fecha ?? null;
+        $field = $data->cancha ?? 'all';
+
+        if (!$id) {
+            return $this->response->setJSON($this->setResponse(400, true, null, 'ID inválido.'));
+        }
         if (!$date) {
             return $this->response->setJSON($this->setResponse(400, true, null, 'Debe ingresar una fecha.'));
         }
 
-        $cancelModel = new CancelReservationsModel();
-        $query = $cancelModel->where('cancel_date', $date);
-        if ($field !== 'all') {
-            $query->where('field_id', (int)$field);
+        $today = date('Y-m-d');
+        if ($date < $today) {
+            return $this->response->setJSON($this->setResponse(400, true, null, 'No se pueden editar cierres con fecha anterior a hoy.'));
         }
-        $rows = $query->findAll();
 
-        return $this->response->setJSON($this->setResponse(null, null, $rows, 'Respuesta exitosa'));
+        $fieldsModel = new FieldsModel();
+        $cancelModel = new CancelReservationsModel();
+        $row = $cancelModel->find($id);
+        if (!$row) {
+            return $this->response->setJSON($this->setResponse(404, true, null, 'Cierre no encontrado.'));
+        }
+
+        $sameDateRows = $cancelModel->where('cancel_date', $date)->findAll();
+        $firstId = null;
+        $hasAllOther = false;
+        $hasSameFieldOther = false;
+        foreach ($sameDateRows as $r) {
+            $rowId = (int)$r['id'];
+            if ($firstId === null || $rowId < $firstId) {
+                $firstId = $rowId;
+            }
+            if ($rowId === (int)$id) {
+                continue;
+            }
+            if (empty($r['field_id'])) {
+                $hasAllOther = true;
+            }
+            if ($field !== 'all' && (int)($r['field_id'] ?? 0) === (int)$field) {
+                $hasSameFieldOther = true;
+            }
+        }
+
+        if ($field === 'all') {
+            if ($firstId !== null && (int)$id !== (int)$firstId) {
+                return $this->response->setJSON($this->setResponse(409, true, null, 'Solo el primer cierre de la fecha puede cambiarse a "Todas".'));
+            }
+        } else {
+            if ($hasAllOther) {
+                return $this->response->setJSON($this->setResponse(409, true, null, 'Ya existe un cierre para Todas las canchas en esa fecha.'));
+            }
+            if ($hasSameFieldOther) {
+                return $this->response->setJSON($this->setResponse(409, true, null, 'Ya existe un cierre para esa cancha en esa fecha.'));
+            }
+        }
+
+        $fieldLabel = 'Todas';
+        $fieldId = null;
+        if ($field !== 'all') {
+            $fieldLabel = $fieldsModel->getField($field)['name'] ?? 'N/D';
+            $fieldId = $field;
+        }
+
+        $userName = session()->get('name') ?? session()->get('user') ?? 'N/D';
+        $payload = [
+            'cancel_date' => $date,
+            'field_id' => $fieldId,
+            'field_label' => $fieldLabel,
+            'user_name' => $userName,
+        ];
+
+        try {
+            $cancelModel->update($id, $payload);
+            if ($field === 'all') {
+                $cancelModel->where('cancel_date', $date)
+                    ->where('id !=', $id)
+                    ->delete();
+            }
+            return $this->response->setJSON($this->setResponse(null, null, null, 'Cierre actualizado.'));
+        } catch (\Exception $e) {
+            return $this->response->setJSON($this->setResponse(500, true, null, $e->getMessage()));
+        }
     }
 
     public function deleteCancelReservation()
@@ -564,6 +691,16 @@ class Superadmin extends BaseController
 
         $cancelModel = new CancelReservationsModel();
         try {
+            $row = $cancelModel->find($id);
+            if (!$row) {
+                return $this->response->setJSON($this->setResponse(404, true, null, 'Cierre no encontrado.'));
+            }
+
+            $today = date('Y-m-d');
+            if (!empty($row['cancel_date']) && $row['cancel_date'] < $today) {
+                return $this->response->setJSON($this->setResponse(403, true, null, 'No se pueden editar o eliminar cierres con fecha anterior a hoy.'));
+            }
+
             $cancelModel->delete($id);
             return $this->response->setJSON($this->setResponse(null, null, null, 'Cierre eliminado.'));
         } catch (\Exception $e) {

@@ -130,6 +130,69 @@
         </div>
     </div>
 
+    <div class="card mt-3 d-none" id="cancelReservationsPanel">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Cierre de cancha</h5>
+                <button type="button" class="btn-close" aria-label="Close" id="closeCancelReservations"></button>
+            </div>
+
+            <div class="mt-3">
+                <ul class="nav nav-tabs" id="cancelReservationsTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="cancel-closures-new-tab" data-bs-toggle="tab" data-bs-target="#cancel-closures-new" type="button" role="tab">
+                            Nuevo cierre
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="cancel-closures-list-tab" data-bs-toggle="tab" data-bs-target="#cancel-closures-list" type="button" role="tab">
+                            Cierres programados
+                        </button>
+                    </li>
+                </ul>
+
+                <div class="tab-content pt-3">
+                    <div class="tab-pane fade show active" id="cancel-closures-new" role="tabpanel" aria-labelledby="cancel-closures-new-tab">
+                        <div class="row g-2">
+                            <div class="col-sm-6">
+                                <div class="form-floating">
+                                    <input type="date" class="form-control" id="cancelDate">
+                                    <label for="cancelDate">Fecha</label>
+                                </div>
+                            </div>
+                            <div class="col-sm-6">
+                                <div class="form-floating">
+                                    <select class="form-select" id="cancelField" aria-label="Cancha">
+                                        <option value="all">Todas</option>
+                                        <?php if (!empty($fields)) : ?>
+                                            <?php foreach ($fields as $field) : ?>
+                                                <option value="<?= $field['id'] ?>"><?= $field['name'] ?></option>
+                                            <?php endforeach; ?>
+                                        <?php endif; ?>
+                                    </select>
+                                    <label for="cancelField">Cancha</label>
+                                </div>
+                                <div id="cancelFieldHint" class="form-text"></div>
+                            </div>
+                        </div>
+
+                        <div class="mt-3 d-flex gap-2">
+                            <button type="button" class="btn btn-primary" id="confirmCancelReservations">Aceptar</button>
+                            <button type="button" class="btn btn-outline-secondary d-none" id="cancelEditCancelReservation">Cancelar edición</button>
+                        </div>
+
+                        <div id="cancelReservationsResult" class="mt-3"></div>
+                        <div id="existingClosures" class="mt-3"></div>
+                    </div>
+
+                    <div class="tab-pane fade" id="cancel-closures-list" role="tabpanel" aria-labelledby="cancel-closures-list-tab">
+                        <?= view('superadmin/tabClosures', ['fields' => $fields]) ?>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="table-responsive-sm" id="tableCustomers">
         <table class="table align-middle table-striped-columns mt-2">
             <thead>
@@ -156,45 +219,5 @@
                 <?php endforeach; ?>
             </tbody>
         </table>
-    </div>
-
-    <div class="card mt-4 d-none" id="cancelReservationsPanel">
-        <div class="card-body">
-            <div class="d-flex justify-content-between align-items-center">
-                <h5 class="mb-0">Cierre de cancha</h5>
-                <button type="button" class="btn-close" aria-label="Close" id="closeCancelReservations"></button>
-            </div>
-
-            <div class="mt-3">
-                <div class="row g-2">
-                    <div class="col-sm-6">
-                        <div class="form-floating">
-                            <input type="date" class="form-control" id="cancelDate">
-                            <label for="cancelDate">Fecha</label>
-                        </div>
-                    </div>
-                    <div class="col-sm-6">
-                        <div class="form-floating">
-                            <select class="form-select" id="cancelField" aria-label="Cancha">
-                                <option value="all">Todas</option>
-                                <?php if (!empty($fields)) : ?>
-                                    <?php foreach ($fields as $field) : ?>
-                                        <option value="<?= $field['id'] ?>"><?= $field['name'] ?></option>
-                                    <?php endforeach; ?>
-                                <?php endif; ?>
-                            </select>
-                            <label for="cancelField">Cancha</label>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="mt-3 d-flex gap-2">
-                    <button type="button" class="btn btn-primary" id="confirmCancelReservations">Aceptar</button>
-                </div>
-
-                <div id="cancelReservationsResult" class="mt-3"></div>
-                <div id="existingClosures" class="mt-3"></div>
-            </div>
-        </div>
     </div>
 <?php endif; ?>

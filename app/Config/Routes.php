@@ -89,6 +89,7 @@ $routes->group('', ['filter' => 'auth'], function ($routes) {
     $routes->post('getAnnulledBookings', 'Superadmin::getAnnulledBookings');
     $routes->post('checkCancelReservations', 'Superadmin::checkCancelReservations');
     $routes->post('saveCancelReservations', 'Superadmin::saveCancelReservations');
+    $routes->post('updateCancelReservation', 'Superadmin::updateCancelReservation');
     $routes->post('getCancelReservations', 'Superadmin::getCancelReservations');
     $routes->post('deleteCancelReservation', 'Superadmin::deleteCancelReservation');
     $routes->post('saveConfigGeneral', 'Superadmin::saveConfigGeneral');
