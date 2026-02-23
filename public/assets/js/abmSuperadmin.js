@@ -45,6 +45,14 @@ const bookingEmailConfig = document.getElementById('bookingEmailConfig')
 let idBooking
 let editingCancelReservationId = null
 
+function getLocalDateISO(date = new Date()) {
+    const d = new Date(date)
+    const year = d.getFullYear()
+    const month = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+}
+
 if (adminTabs && adminTabs._element) {
     adminTabs._element.addEventListener("shown.bs.tab", (e) => {
         if (enterFieldsForm) enterFieldsForm.classList.add('d-none')
@@ -53,7 +61,7 @@ if (adminTabs && adminTabs._element) {
 }
 
 if (cancelDateInput) {
-    const today = new Date().toISOString().split('T')[0]
+    const today = getLocalDateISO()
     cancelDateInput.value = today
     cancelDateInput.min = today
     if (cancelFieldSelect) {
@@ -188,7 +196,7 @@ document.addEventListener('click', async (e) => {
                 fecha: cancelDateInput.value,
                 cancha: cancelFieldSelect.value,
             }
-            const today = new Date().toISOString().split('T')[0]
+            const today = getLocalDateISO()
             if (payload.fecha < today) {
                 alert('No se pueden informar cierres con fecha anterior a hoy.')
                 return
@@ -693,7 +701,7 @@ function applyClosuresDateRange(rangeValue) {
     if (!closuresTabDateFromInput || !closuresTabDateToInput) return
 
     const fechaActual = new Date()
-    const toISO = (d) => d.toISOString().split('T')[0]
+    const toISO = (d) => getLocalDateISO(d)
 
     if (rangeValue === 'FD') {
         const hoy = toISO(fechaActual)
