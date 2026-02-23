@@ -25,7 +25,10 @@
 
 
             <div class="login-box-body">
-                <form action="" method="POST">
+                <form action="/auth/login" method="POST">
+                    <?php if (!empty($redirectPath)) : ?>
+                        <input type="hidden" name="redirect" value="<?= esc($redirectPath) ?>">
+                    <?php endif; ?>
 
                     <?php if (session('msg')) : ?>
                         <div class="alert alert-<?= session('msg.type') ?> alert-dismissible fade show" role="alert">
@@ -35,8 +38,8 @@
                     <?php endif; ?>
 
                     <div class="form-floating  has-feedback mb-3 d-flex align-items-center justify-content-center">
-                        <input type="text" class="form-control" name="user" placeholder="Usuario" style="width: 300px;">
-                        <label for="floatingInput">Usuario</label>
+                        <input type="text" class="form-control" name="account" placeholder="Cuenta o email" style="width: 300px;">
+                        <label for="floatingInput">Cuenta o email</label>
                         <span class="ms-2"><i class="fa-solid fa-user"></i></span>
                     </div>
 

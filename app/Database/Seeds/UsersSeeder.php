@@ -10,14 +10,16 @@ class UsersSeeder extends Seeder
     {
         $data = [
             [
-                'user' => 'testuser',
-                'password' => password_hash('1', PASSWORD_DEFAULT),
+                'user' => 'marcos',
+                'email' => 'marcoslromero23@gmail.com',
+                'cuenta' => 'marcos-admin',
+                'password' => password_hash('admin123', PASSWORD_DEFAULT),
                 'superadmin' => 1,
-                'name' => 'Test',
+                'name' => 'Marcos',
                 'active' => 1,
             ],
         ];
 
-        $this->db->table('users')->insertBatch($data);
+        $this->db->table('user')->insertBatch($data);
     }
 }

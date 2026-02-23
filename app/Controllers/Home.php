@@ -12,11 +12,48 @@ use App\Models\LocalitiesModel;
 use App\Models\MercadoPagoModel;
 use App\Models\OffersModel;
 use App\Models\TimeModel;
+use Config\Database;
 use DateInterval;
 use DateTime;
 
 class Home extends BaseController
 {
+    public function tenant(string $codigo)
+    {
+        if (!preg_match('/^[0-9]{9}$/', $codigo)) {
+            throw \CodeIgniter\Exceptions\PageNotFoundException::forPageNotFound();
+        }
+
+        $dbAlfa = Database::connect('alfareserva');
+        $cliente = $dbAlfa->table('clientes c')
+            ->select('c.codigo, c.base, c.habilitado, r.descripcion AS rubro')
+            ->join('rubros r', 'r.id = c.id_rubro', 'left')
+            ->where('c.codigo', $codigo)
+            ->get()
+            ->getRowArray();
+
+        if (!$cliente || (int) ($cliente['habilitado'] ?? 0) !== 1) {
+            throw \CodeIgniter\Exceptions\PageNotFoundException::forPageNotFound();
+        }
+
+        $rubro = strtolower(trim((string) ($cliente['rubro'] ?? '')));
+        if (!in_array($rubro, ['cancha', 'comida'], true)) {
+            return $this->response->setStatusCode(400)->setBody('El link del cliente no corresponde a un rubro habilitado.');
+        }
+
+        if ($rubro === 'comida') {
+            return redirect()->to('/comida/' . $codigo);
+        }
+
+        session()->set([
+            'tenant_codigo' => $cliente['codigo'],
+            'tenant_base' => $cliente['base'],
+            'tenant_rubro' => $cliente['rubro'],
+        ]);
+
+        return $this->index();
+    }
+
     public function index()
     {
         $offersModel = new OffersModel();

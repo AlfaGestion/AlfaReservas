@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="es">
 
 <head>
@@ -25,15 +25,15 @@
         <div class="container-fluid d-flex justify-content-center align-items-center flex-row">
             <div class="d-flex justify-content-center align-items-center flex-row">
                 
-                <div class="mx-auto d-lg-none"> <!-- Centra en dispositivos móviles -->
+                <div class="mx-auto d-lg-none"> <!-- Centra en dispositivos moviles -->
                     <a class="navbar-brand" href="<?= base_url() ?>">
-                        <img src="<?= base_url(PUBLIC_FOLDER . "assets/images/logo.png") ?>" width="150px" alt="">
+                        <img src="<?= base_url('alfa.png') ?>" width="84" alt="Alfa">
                     </a>
                 </div>
 
                 <div class="mx-auto d-none d-lg-block"> <!-- Centra en pantalla grande -->
                     <a class="navbar-brand" href="<?= base_url() ?>">
-                        <img src="<?= base_url(PUBLIC_FOLDER . "assets/images/logo.png") ?>" width="200px" alt="">
+                        <img src="<?= base_url('alfa.png') ?>" width="110" alt="Alfa">
                     </a>
                 </div>
 
@@ -55,7 +55,7 @@
         <footer class="my-4" style="background-color: #5a5a5a;">
             <?php if (session()->logueado) : ?>
                 <ul class="nav justify-content-center border-bottom pb-3 mb-3">
-                    <li class="nav-item"><a href="<?= base_url('auth/logOut') ?>" class="nav-link px-2 text-muted">Cerrar sesión</a></li>
+                    <li class="nav-item"><a href="<?= base_url('auth/logOut') ?>" class="nav-link px-2 text-muted">Cerrar sesiÃ³n</a></li>
                     <li class="nav-item"><a href="<?= base_url('abmAdmin') ?>" class="nav-link px-2 text-muted">Panel</a></li>
                 </ul>
             <?php else : ?>
@@ -67,7 +67,7 @@
             <?php endif; ?>
 
             <div class="link d-flex justify-content-center align-items-center">
-                <a href="https://alfagestion.com.ar/" target="_blank" class="text-center text-muted">© 2023 - Alfanet</a>
+                <a href="https://alfagestion.com.ar/" target="_blank" class="text-center text-muted">Â© 2023 - Alfanet</a>
             </div>
         </footer>
     </div>
@@ -83,3 +83,4 @@
 </body>
 
 </html>
+

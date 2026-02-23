@@ -22,6 +22,8 @@ document.addEventListener('click', (e) => {
         if (e.target.id == 'buttonEdit') {
             e.preventDefault
             const userEdit = document.getElementById('userEdit')
+            const emailEdit = document.getElementById('emailEdit')
+            const cuentaEdit = document.getElementById('cuentaEdit')
             const passwordEdit = document.getElementById('passwordEdit')
             const repeatPasswordEdit = document.getElementById('repeatPasswordEdit')
             const nameEdit = document.getElementById('nameEdit')
@@ -38,6 +40,8 @@ document.addEventListener('click', (e) => {
             data = {
                 id : user.data.id,
                 user : userEdit.value,
+                email : emailEdit.value,
+                cuenta : cuentaEdit.value,
                 password : passwordEdit.value,
                 name : nameEdit.value,
                 superadmin : superadminRadio.checked
@@ -56,6 +60,14 @@ function fillForm(user) {
     form = `
         <div class="form-group has-feedback mb-3 d-flex align-items-center justify-content-center">
             <input type="text" name="user" value="${user.user}" id="userEdit" class="form-control" placeholder="Usuario">
+        </div>
+
+        <div class="form-group has-feedback mb-3 d-flex align-items-center justify-content-center">
+            <input type="email" name="email" value="${user.email ?? ''}" id="emailEdit" class="form-control" placeholder="Email">
+        </div>
+
+        <div class="form-group has-feedback mb-3 d-flex align-items-center justify-content-center">
+            <input type="text" name="cuenta" value="${user.cuenta ?? ''}" id="cuentaEdit" class="form-control" placeholder="Cuenta">
         </div>
         
         <div class="form-group has-feedback mb-3 d-flex align-items-center justify-content-center">

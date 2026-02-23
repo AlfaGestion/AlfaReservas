@@ -25,21 +25,42 @@
 
 $modelUploads = new UploadModel();
 $userBackground = $modelUploads->first();
+$tenantCodigo = (string) (session()->get('tenant_codigo') ?? '');
+
+$tenantDir = FCPATH . 'assets/tenants/' . $tenantCodigo . '/';
+$tenantLogo = null;
+$tenantBackground = null;
+
+if ($tenantCodigo !== '' && is_dir($tenantDir)) {
+    foreach (['logo.png', 'logo.jpg', 'logo.jpeg', 'logo.webp'] as $logoFile) {
+        if (is_file($tenantDir . $logoFile)) {
+            $tenantLogo = base_url(PUBLIC_FOLDER . 'assets/tenants/' . $tenantCodigo . '/' . $logoFile);
+            break;
+        }
+    }
+
+    foreach (['fondo.jpg', 'fondo.png', 'fondo.webp', 'background.jpg', 'background.png', 'background.webp'] as $bgFile) {
+        if (is_file($tenantDir . $bgFile)) {
+            $tenantBackground = base_url(PUBLIC_FOLDER . 'assets/tenants/' . $tenantCodigo . '/' . $bgFile);
+            break;
+        }
+    }
+}
 
 ?>
 
-<?php if ($userBackground) : ?>
+<?php if ($tenantBackground || $userBackground) : ?>
 
-    <body style="background: url(<?= base_url(PUBLIC_FOLDER . "assets/images/uploads/" . $userBackground['name']) ?>);">
+    <body style="background: url(<?= $tenantBackground ? $tenantBackground : base_url(PUBLIC_FOLDER . "assets/images/uploads/" . $userBackground['name']) ?>);">
     <?php else : ?>
 
         <body>
         <?php endif; ?>
 
         <?php echo $this->renderSection('navbar') ?>
-        <?php if ($userBackground) : ?>
+        <?php if ($tenantBackground || $userBackground) : ?>
 
-            <nav class="navbar navbar-expand-lg" style="background: url(<?= base_url(PUBLIC_FOLDER . "assets/images/uploads" . $userBackground['name']) ?>);">
+            <nav class="navbar navbar-expand-lg" style="background: url(<?= $tenantBackground ? $tenantBackground : base_url(PUBLIC_FOLDER . "assets/images/uploads/" . $userBackground['name']) ?>);">
             <?php else : ?>
 
                 <nav class="navbar navbar-expand-lg" style="background-color: #ffffff;">
@@ -47,7 +68,21 @@ $userBackground = $modelUploads->first();
 
                 <div class="container-fluid">
 
-                    <?php if ($userBackground) : ?>
+                    <?php if ($tenantLogo) : ?>
+
+                        <div class="mx-auto d-lg-none"> <!-- Centra en dispositivos mÃ³viles -->
+                            <a class="navbar-brand" href="<?= base_url() ?>">
+                                <img src="<?= $tenantLogo ?>" width="350px" alt="">
+                            </a>
+                        </div>
+
+                        <div class="mx-auto d-none d-lg-block"> <!-- Centra en pantalla grande -->
+                            <a class="navbar-brand" href="<?= base_url() ?>">
+                                <img src="<?= $tenantLogo ?>" width="350px" alt="">
+                            </a>
+                        </div>
+
+                    <?php elseif ($userBackground) : ?>
 
                         <div class="mx-auto d-lg-none"> <!-- Centra en dispositivos móviles -->
                             <a class="navbar-brand" href="<?= base_url() ?>">

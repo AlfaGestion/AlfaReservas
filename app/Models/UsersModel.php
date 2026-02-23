@@ -6,14 +6,14 @@ use CodeIgniter\Model;
 
 class UsersModel extends Model
 {
-    protected $DBGroup          = 'default';
-    protected $table            = 'users';
+    protected $DBGroup          = 'alfareserva';
+    protected $table            = 'user';
     protected $primaryKey       = 'id';
     protected $useAutoIncrement = true;
     protected $returnType       = 'array';
     protected $useSoftDeletes   = false;
     protected $protectFields    = true;
-    protected $allowedFields    = ['user', 'password', 'superadmin', 'name', 'active'];
+    protected $allowedFields    = ['user', 'email', 'cuenta', 'password', 'superadmin', 'name', 'active'];
 
     // Dates
     protected $useTimestamps = false;

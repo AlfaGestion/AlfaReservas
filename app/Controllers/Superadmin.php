@@ -3,6 +3,7 @@
 namespace App\Controllers;
 
 use App\Models\BookingsModel;
+use App\Models\ClientesModel;
 use App\Models\CustomersModel;
 use App\Models\FieldsModel;
 use App\Models\CancelReservationsModel;
@@ -14,8 +15,10 @@ use App\Models\MercadoPagoModel;
 use App\Models\OffersModel;
 use App\Models\PaymentsModel;
 use App\Models\RateModel;
+use App\Models\RubrosModel;
 use App\Models\TimeModel;
 use App\Models\UsersModel;
+use Config\Database;
 
 class Superadmin extends BaseController
 {
@@ -127,12 +130,123 @@ class Superadmin extends BaseController
         $bookingsModel->delete($idsToDelete);
     }
 
+    private function getNextClienteCodigo(): string
+    {
+        $prefix = '11201';
+        $db = Database::connect('alfareserva');
+
+        if (!$db->tableExists('clientes')) {
+            return $prefix . '0001';
+        }
+
+        $row = $db->query(
+            "SELECT codigo FROM clientes WHERE codigo LIKE ? ORDER BY codigo DESC LIMIT 1",
+            [$prefix . '%']
+        )->getRowArray();
+
+        if (!$row || empty($row['codigo'])) {
+            return $prefix . '0001';
+        }
+
+        $codigo = (string) $row['codigo'];
+        if (preg_match('/^' . preg_quote($prefix, '/') . '(\\d{4})$/', $codigo, $matches) !== 1) {
+            return $prefix . '0001';
+        }
+
+        $nextNumber = (int) $matches[1] + 1;
+        return $prefix . str_pad((string) $nextNumber, 4, '0', STR_PAD_LEFT);
+    }
+
+    private function databaseExists(string $databaseName): bool
+    {
+        $db = Database::connect('alfareserva');
+        $row = $db->query(
+            'SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = ? LIMIT 1',
+            [$databaseName]
+        )->getRowArray();
+
+        return !empty($row);
+    }
+
+    private function createDatabase(string $databaseName): void
+    {
+        $db = Database::connect('alfareserva');
+        $db->query('CREATE DATABASE `' . $databaseName . '` CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci');
+    }
+
+    private function provisionClienteDatabase(string $databaseName, string $rubroDescripcion): void
+    {
+        $db = Database::connect('alfareserva');
+
+        $db->query(
+            "CREATE TABLE IF NOT EXISTS `{$databaseName}`.`user` (
+                `id` INT(10) UNSIGNED NOT NULL AUTO_INCREMENT,
+                `user` VARCHAR(100) NOT NULL,
+                `email` VARCHAR(150) NOT NULL,
+                `password` VARCHAR(255) NOT NULL,
+                `name` VARCHAR(255) NULL,
+                `active` TINYINT(1) NOT NULL DEFAULT 1,
+                PRIMARY KEY (`id`),
+                UNIQUE KEY `uq_user_email` (`email`),
+                UNIQUE KEY `uq_user_user` (`user`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+        );
+
+        $db->query(
+            "CREATE TABLE IF NOT EXISTS `{$databaseName}`.`clientes` (
+                `id` INT(10) UNSIGNED NOT NULL AUTO_INCREMENT,
+                `nombre` VARCHAR(255) NOT NULL,
+                `telefono` VARCHAR(50) NULL,
+                `email` VARCHAR(150) NULL,
+                `activo` TINYINT(1) NOT NULL DEFAULT 1,
+                PRIMARY KEY (`id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+        );
+
+        $db->query(
+            "CREATE TABLE IF NOT EXISTS `{$databaseName}`.`reservas` (
+                `id` INT(10) UNSIGNED NOT NULL AUTO_INCREMENT,
+                `id_cliente` INT(10) UNSIGNED NULL,
+                `fecha` DATE NOT NULL,
+                `hora_desde` VARCHAR(10) NULL,
+                `hora_hasta` VARCHAR(10) NULL,
+                `estado` VARCHAR(30) NOT NULL DEFAULT 'pendiente',
+                `observaciones` TEXT NULL,
+                PRIMARY KEY (`id`),
+                KEY `idx_reservas_cliente` (`id_cliente`),
+                CONSTRAINT `fk_reservas_clientes` FOREIGN KEY (`id_cliente`) REFERENCES `clientes`(`id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+        );
+
+        $rubroNormalizado = strtolower(trim($rubroDescripcion));
+        if ($rubroNormalizado === 'comida') {
+            $db->query(
+                "CREATE TABLE IF NOT EXISTS `{$databaseName}`.`catalogo` (
+                    `id` INT(10) UNSIGNED NOT NULL AUTO_INCREMENT,
+                    `nombre` VARCHAR(255) NOT NULL,
+                    `descripcion` TEXT NULL,
+                    `precio` DECIMAL(12,2) NOT NULL DEFAULT 0,
+                    `activo` TINYINT(1) NOT NULL DEFAULT 1,
+                    PRIMARY KEY (`id`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+            );
+        }
+    }
+
+    private function buildClienteLink(string $codigo): string
+    {
+        $base = (string) env('app.baseURL', base_url('/'));
+        return rtrim($base, '/') . '/' . $codigo;
+    }
+
     public function index()
     {
         $bookingsModel = new BookingsModel();
         $fieldsModel = new FieldsModel();
         $rateModel = new RateModel();
         $customersModel = new CustomersModel();
+        $clientesModel = new ClientesModel();
+        $rubrosModel = new RubrosModel();
         $timeModel = new TimeModel();
         $usersModel = new UsersModel();
         $offerModel = new OffersModel();
@@ -198,15 +312,30 @@ class Superadmin extends BaseController
         $fields = $fieldsModel->findAll();
 
         $customers = $customersModel->findAll();
+        $clientes = [];
+        $rubros = [];
+        $db = Database::connect('alfareserva');
+        if ($db->tableExists('rubros')) {
+            $rubros = $rubrosModel->orderBy('descripcion', 'ASC')->findAll();
+        }
+        if ($db->tableExists('clientes')) {
+            $clientes = $db->table('clientes c')
+                ->select('c.id, c.codigo, c.razon_social, c.base, c.email, c.habilitado, c.link, c.id_rubro, r.descripcion AS rubro_descripcion')
+                ->join('rubros r', 'r.id = c.id_rubro', 'left')
+                ->orderBy('c.id', 'DESC')
+                ->get()
+                ->getResultArray();
+        }
+        $nextClienteCodigo = $this->getNextClienteCodigo();
         $localities = $localitiesModel->orderBy('name', 'ASC')->findAll();
         $closureTextRow = $configModel->where('clave', 'texto_cierre')->first();
         $closureText = $closureTextRow['valor'] ?? '';
         if (!is_string($closureText) || trim($closureText) === '') {
             $closureText = "Aviso importante\n\n"
-                . "Queremos informarles que el día <fecha> las canchas permanecerán cerradas.\n"
+                . "Queremos informarles que el dÃ­a <fecha> las canchas permanecerÃ¡n cerradas.\n"
                 . "Pedimos disculpas por las molestias que esto pueda ocasionar.\n\n"
                 . "De todas formas, ya pueden reservar normalmente las horas para fechas posteriores.\n"
-                . "Muchas gracias por la comprensión y por seguir eligiéndonos.";
+                . "Muchas gracias por la comprensiÃ³n y por seguir eligiÃ©ndonos.";
         }
         $bookingEmailRow = $configModel->where('clave', 'email_reservas')->first();
         $bookingEmail = $bookingEmailRow['valor'] ?? '';
@@ -215,6 +344,9 @@ class Superadmin extends BaseController
             'bookings' => $bookings,
             'rate' => $rate,
             'customers' => $customers,
+            'clientes' => $clientes,
+            'rubros' => $rubros,
+            'nextClienteCodigo' => $nextClienteCodigo,
             'time' => $time,
             'openingTime' => $openingTime,
             'fields' => $fields,
@@ -554,7 +686,7 @@ class Superadmin extends BaseController
 
         try {
             $cancelModel->insert($payload);
-            return $this->response->setJSON($this->setResponse(null, null, null, 'Cancelación registrada.'));
+            return $this->response->setJSON($this->setResponse(null, null, null, 'CancelaciÃ³n registrada.'));
         } catch (\Exception $e) {
             return $this->response->setJSON($this->setResponse(500, true, null, $e->getMessage()));
         }
@@ -601,7 +733,7 @@ class Superadmin extends BaseController
         $field = $data->cancha ?? 'all';
 
         if (!$id) {
-            return $this->response->setJSON($this->setResponse(400, true, null, 'ID inválido.'));
+            return $this->response->setJSON($this->setResponse(400, true, null, 'ID invÃ¡lido.'));
         }
         if (!$date) {
             return $this->response->setJSON($this->setResponse(400, true, null, 'Debe ingresar una fecha.'));
@@ -686,7 +818,7 @@ class Superadmin extends BaseController
         $id = $data->id ?? null;
 
         if (!$id) {
-            return $this->response->setJSON($this->setResponse(400, true, null, 'ID inválido.'));
+            return $this->response->setJSON($this->setResponse(400, true, null, 'ID invÃ¡lido.'));
         }
 
         $cancelModel = new CancelReservationsModel();
@@ -731,7 +863,7 @@ class Superadmin extends BaseController
                 $configModel->insert(['clave' => 'email_reservas', 'valor' => $emailReservas]);
             }
 
-            return $this->response->setJSON($this->setResponse(null, null, null, 'Configuración guardada.'));
+            return $this->response->setJSON($this->setResponse(null, null, null, 'ConfiguraciÃ³n guardada.'));
         } catch (\Exception $e) {
             return $this->response->setJSON($this->setResponse(500, true, null, $e->getMessage()));
         }
@@ -761,7 +893,7 @@ class Superadmin extends BaseController
             } else {
                 $mpKeysModel->insert($query);
             }
-            return redirect()->to('abmAdmin')->with('msg', ['type' => 'success', 'body' => 'Datos insertados con éxito: ']);
+            return redirect()->to('abmAdmin')->with('msg', ['type' => 'success', 'body' => 'Datos insertados con Ã©xito: ']);
         } catch (\Exception $e) {
             return redirect()->to('abmAdmin')->with('msg', ['type' => 'danger', 'body' => 'Error al insertar datos: ' . $e->getMessage()]);
         }
@@ -772,12 +904,80 @@ class Superadmin extends BaseController
         $usersModel = new UsersModel();
         try {
             $usersModel->update($id, ['active' => 0]);
-            return redirect()->to('abmAdmin')->with('msg', ['type' => 'success', 'body' => 'Usuario eliminado con éxito: ']);
+            return redirect()->to('abmAdmin')->with('msg', ['type' => 'success', 'body' => 'Usuario eliminado con Ã©xito: ']);
         } catch (\Exception $e) {
             return redirect()->to('abmAdmin')->with('msg', ['type' => 'danger', 'body' => 'Error al eliminar usuario: ' . $e->getMessage()]);
         }
     }
+    public function saveCliente()
+    {
+        $clientesModel = new ClientesModel();
+        $rubrosModel = new RubrosModel();
 
+        $codigo = $this->getNextClienteCodigo();
+        $razonSocial = trim((string) $this->request->getVar('razon_social'));
+        $base = strtolower(trim((string) $this->request->getVar('base')));
+        $idRubro = (int) $this->request->getVar('id_rubro');
+        $email = strtolower(trim((string) $this->request->getVar('email')));
+
+        if ($razonSocial === '' || $base === '' || $idRubro <= 0 || $email === '') {
+            return redirect()->to('/abmAdmin')->with('msg', ['type' => 'danger', 'body' => 'Debe completar todos los datos del cliente.']);
+        }
+
+        if (!preg_match('/^[a-z0-9_]+$/', $base)) {
+            return redirect()->to('/abmAdmin')->with('msg', [
+                'type' => 'danger',
+                'body' => 'La base solo puede contener letras minusculas, numeros y guion bajo.'
+            ]);
+        }
+
+        if ($this->databaseExists($base)) {
+            return redirect()->to('/abmAdmin')->with('msg', [
+                'type' => 'danger',
+                'body' => 'Ya existe una base con ese nombre. Ingrese otra.'
+            ]);
+        }
+
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return redirect()->to('/abmAdmin')->with('msg', ['type' => 'danger', 'body' => 'El email ingresado no es valido.']);
+        }
+
+        $rubro = $rubrosModel->find($idRubro);
+        if (!$rubro) {
+            return redirect()->to('/abmAdmin')->with('msg', ['type' => 'danger', 'body' => 'El rubro seleccionado no existe.']);
+        }
+
+        $databaseCreated = false;
+        try {
+            $this->createDatabase($base);
+            $databaseCreated = true;
+            $this->provisionClienteDatabase($base, (string) ($rubro['descripcion'] ?? ''));
+
+            $link = $this->buildClienteLink($codigo);
+
+            $clientesModel->insert([
+                'codigo' => $codigo,
+                'razon_social' => $razonSocial,
+                'base' => $base,
+                'id_rubro' => $idRubro,
+                'email' => $email,
+                'habilitado' => 1,
+                'link' => $link,
+            ]);
+        } catch (\Exception $e) {
+            if ($databaseCreated) {
+                try {
+                    $db = Database::connect('alfareserva');
+                    $db->query('DROP DATABASE `' . $base . '`');
+                } catch (\Throwable $dropError) {
+                    // Si falla el rollback de DB, devolvemos el error original.
+                }
+            }
+            return redirect()->to('/abmAdmin')->with('msg', ['type' => 'danger', 'body' => 'Error al crear cliente: ' . $e->getMessage()]);
+        }
+
+        return redirect()->to('/abmAdmin')->with('msg', ['type' => 'success', 'body' => 'Cliente creado correctamente.']);
+    }
     public function setResponse($code = 200, $error = false, $data = null, $message = '')
     {
         $response = [
@@ -790,3 +990,4 @@ class Superadmin extends BaseController
         return $response;
     }
 }
+

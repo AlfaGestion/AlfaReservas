@@ -49,22 +49,19 @@
                     </div>
 
                     <div class="form-group has-feedback mb-3 d-flex align-items-center justify-content-center">
+                        <input type="email" name="email" class="form-control" placeholder="Email">
+                    </div>
+
+                    <div class="form-group has-feedback mb-3 d-flex align-items-center justify-content-center">
+                        <input type="text" name="cuenta" class="form-control" placeholder="Cuenta">
+                    </div>
+
+                    <div class="form-group has-feedback mb-3 d-flex align-items-center justify-content-center">
                         <input type="password" name="password" class="form-control" placeholder="Contraseña">
                     </div>
 
                     <div class="form-group has-feedback mb-3 d-flex align-items-center justify-content-center">
                         <input type="password" name="repeat_password" class="form-control" placeholder="Repetir contraseña">
-                    </div>
-
-                    <div class="form-group has-feedback mb-3 d-flex align-items-center justify-content-center">
-                        <input type="text" name="name" class="form-control" placeholder="Nombre">
-                    </div>
-
-                    <div class="form-check mb-2">
-                        <input class="form-check-input" type="checkbox" name="superadmin" id="superadminRadio">
-                        <label class="form-check-label" for="superadmin">
-                            Superadmin
-                        </label>
                     </div>
 
                     <div class="row d-flex align-items-center justify-content-center flex-nowrap flex-row">

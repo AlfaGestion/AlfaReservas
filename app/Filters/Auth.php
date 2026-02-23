@@ -12,7 +12,7 @@ class Auth implements FilterInterface
     {
         if (!session()->get('logueado')) {
             session()->destroy();
-            return redirect()->to(base_url('auth/login'));
+            return redirect()->to('/auth/login');
         }
     }
 

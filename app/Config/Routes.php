@@ -29,7 +29,16 @@ $routes->set404Override();
 
 // We get a performance increase by specifying the default
 // route since we don't have to scan directories.
-$routes->get('/', 'Home::index');
+$routes->get('([0-9]{9})', 'Home::tenant/$1');
+$routes->get('comida/([0-9]{9})', 'Comida::index/$1');
+$routes->post('comida/([0-9]{9})/reservar', 'Comida::reservar/$1');
+$routes->get('comida/([0-9]{9})/admin/login', 'ComidaAdmin::login/$1');
+$routes->post('comida/([0-9]{9})/admin/login', 'ComidaAdmin::doLogin/$1');
+$routes->get('comida/([0-9]{9})/admin/logout', 'ComidaAdmin::logout/$1');
+$routes->get('comida/([0-9]{9})/admin', 'ComidaAdmin::index/$1');
+$routes->post('comida/([0-9]{9})/admin/catalogo', 'ComidaAdmin::saveCatalogo/$1');
+$routes->get('/', 'Auth::index');
+$routes->post('/', 'Auth::login');
 $routes->post('formInfo', 'Home::infoReserva');
 $routes->post('checkClosure', 'Home::checkClosure');
 $routes->get('getUpcomingClosure', 'Home::getUpcomingClosure');
@@ -94,6 +103,7 @@ $routes->group('', ['filter' => 'auth'], function ($routes) {
     $routes->post('deleteCancelReservation', 'Superadmin::deleteCancelReservation');
     $routes->post('saveConfigGeneral', 'Superadmin::saveConfigGeneral');
     $routes->post('deleteUser/(:any)', 'Superadmin::deleteUser/$1');
+    $routes->post('saveCliente', 'Superadmin::saveCliente');
 
     $routes->post('saveTime', 'Time::saveTime');
     $routes->get('getTime', 'Time::getTime');

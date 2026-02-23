@@ -34,6 +34,8 @@ class Users extends BaseController
 
         $query = [
             'user' => $data->user,
+            'email' => strtolower(trim((string) ($data->email ?? ''))),
+            'cuenta' => trim((string) ($data->cuenta ?? $data->user)),
             'password' => password_hash($password, PASSWORD_DEFAULT),
             'name' => $data->name,
             'superadmin' => $data->superadmin,
