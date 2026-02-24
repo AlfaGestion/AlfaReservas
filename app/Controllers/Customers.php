@@ -3,54 +3,84 @@
 namespace App\Controllers;
 
 use App\Models\CustomersModel;
+use App\Models\RubrosModel;
 
 class Customers extends BaseController
 {
 
     public function register()
     {
-        return view('customers/register');
+        $rubrosModel = new RubrosModel();
+        $rubros = [];
+
+        try {
+            $rubros = $rubrosModel->orderBy('descripcion', 'ASC')->findAll();
+        } catch (\Throwable $e) {
+            $rubros = [];
+        }
+
+        return view('customers/register', ['rubros' => $rubros]);
     }
 
     public function dbRegister()
     {
         $modelCustomers = new CustomersModel();
 
-        $phone = $this->request->getVar('areaCode') . $this->request->getVar('phone');
-        $name = $this->request->getVar('name');
-        $lastName = $this->request->getVar('last_name');
-        $dni = $this->request->getVar('dni');
-        $city = $this->request->getVar('city');
-        $this->ensureLocalityExists($city);
+        $rubrosModel = new RubrosModel();
+        $phone = preg_replace('/\D+/', '', (string) $this->request->getVar('phone'));
+        $name = trim((string) $this->request->getVar('name'));
+        $razonSocial = trim((string) $this->request->getVar('razon_social'));
+        $dni = trim((string) $this->request->getVar('dni'));
+        $city = trim((string) $this->request->getVar('city'));
+        $idRubro = (int) $this->request->getVar('id_rubro');
+        $email = strtolower(trim((string) $this->request->getVar('email')));
+        $password = (string) $this->request->getVar('password');
 
 
-        $existingPhone = $modelCustomers->where('phone', $phone)->findAll();
+        $existingPhone = $modelCustomers->where('phone', $phone)->first();
 
-        if ($phone == '' || $name == '' || $lastName == '' || $dni == '') {
+        if ($phone === '' || $name === '' || $razonSocial === '' || $dni === '' || $city === '' || $idRubro <= 0 || $email === '' || $password === '') {
             return redirect()->to('customers/register')->with('msg', ['type' => 'danger', 'body' => 'Debe completar todos los campos']);
         }
 
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return redirect()->to('customers/register')->with('msg', ['type' => 'danger', 'body' => 'El email ingresado no es valido']);
+        }
+
+        if (!$rubrosModel->find($idRubro)) {
+            return redirect()->to('customers/register')->with('msg', ['type' => 'danger', 'body' => 'El rubro seleccionado no es valido']);
+        }
+
         if ($existingPhone) {
-            return redirect()->to('customers/register')->with('msg', ['type' => 'danger', 'body' => 'El teléfono coincide con un usuario ya registrado']);
+            return redirect()->to('customers/register')->with('msg', ['type' => 'danger', 'body' => 'El telefono coincide con un usuario ya registrado']);
+        }
+
+        $existingEmail = $modelCustomers->where('email', $email)->first();
+        if ($existingEmail) {
+            return redirect()->to('customers/register')->with('msg', ['type' => 'danger', 'body' => 'El email ya se encuentra registrado']);
         }
 
         $query = [
             'name' => $name,
-            'last_name' => $lastName,
+            'last_name' => '-',
+            'razon_social' => $razonSocial,
             'dni' => $dni,
             'phone' => $phone,
             'offer' => 0,
             'city' => $city,
+            'email' => $email,
+            'password' => password_hash($password, PASSWORD_DEFAULT),
+            'id_rubro' => $idRubro,
         ];
 
 
         try {
             $modelCustomers->insert($query);
         } catch (\Exception $e) {
-            return "Error al insertar datos: " . $e->getMessage();
+            return redirect()->to('customers/register')->with('msg', ['type' => 'danger', 'body' => 'Error al registrar: ' . $e->getMessage()]);
         }
 
-        return redirect()->to(base_url())->with('msg', ['type' => 'success', 'body' => 'Usuario registrado correctamente']);
+        return redirect()->to(base_url('auth/login'))->with('msg', ['type' => 'success', 'body' => 'Alta registrada correctamente']);
     }
 
     public function createOffer()

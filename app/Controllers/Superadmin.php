@@ -233,10 +233,31 @@ class Superadmin extends BaseController
         }
     }
 
-    private function buildClienteLink(string $codigo): string
+    private function normalizeTenantKey(string $value): string
     {
-        $base = (string) env('app.baseURL', base_url('/'));
-        return rtrim($base, '/') . '/' . $codigo;
+        $value = strtolower(trim($value));
+        if ($value === '') {
+            return '';
+        }
+
+        $normalized = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $value);
+        if (is_string($normalized) && $normalized !== '') {
+            $value = $normalized;
+        }
+
+        $value = preg_replace('/[^a-z0-9]+/', '_', $value);
+        $value = trim((string) $value, '_');
+
+        if ($value === '') {
+            return '';
+        }
+
+        return substr($value, 0, 90);
+    }
+
+    private function buildClienteLink(string $slug): string
+    {
+        return '/' . ltrim($slug, '/');
     }
 
     public function index()
@@ -916,19 +937,13 @@ class Superadmin extends BaseController
 
         $codigo = $this->getNextClienteCodigo();
         $razonSocial = trim((string) $this->request->getVar('razon_social'));
-        $base = strtolower(trim((string) $this->request->getVar('base')));
+        $base = $this->normalizeTenantKey($razonSocial);
+        $linkPathInput = trim((string) $this->request->getVar('link_path'));
         $idRubro = (int) $this->request->getVar('id_rubro');
         $email = strtolower(trim((string) $this->request->getVar('email')));
 
         if ($razonSocial === '' || $base === '' || $idRubro <= 0 || $email === '') {
             return redirect()->to('/abmAdmin')->with('msg', ['type' => 'danger', 'body' => 'Debe completar todos los datos del cliente.']);
-        }
-
-        if (!preg_match('/^[a-z0-9_]+$/', $base)) {
-            return redirect()->to('/abmAdmin')->with('msg', [
-                'type' => 'danger',
-                'body' => 'La base solo puede contener letras minusculas, numeros y guion bajo.'
-            ]);
         }
 
         if ($this->databaseExists($base)) {
@@ -953,7 +968,11 @@ class Superadmin extends BaseController
             $databaseCreated = true;
             $this->provisionClienteDatabase($base, (string) ($rubro['descripcion'] ?? ''));
 
-            $link = $this->buildClienteLink($codigo);
+            $linkSlug = $this->normalizeTenantKey($linkPathInput !== '' ? ltrim($linkPathInput, '/') : $base);
+            if ($linkSlug === '') {
+                throw new \RuntimeException('No se pudo generar un link valido para el cliente.');
+            }
+            $link = $this->buildClienteLink($linkSlug);
 
             $clientesModel->insert([
                 'codigo' => $codigo,

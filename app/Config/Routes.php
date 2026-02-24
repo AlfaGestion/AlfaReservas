@@ -152,3 +152,6 @@ $routes->group('', ['filter' => 'auth'], function ($routes) {
 if (is_file(APPPATH . 'Config/' . ENVIRONMENT . '/Routes.php')) {
     require APPPATH . 'Config/' . ENVIRONMENT . '/Routes.php';
 }
+
+// Ruta tenant por base normalizada, se deja al final para no pisar rutas del sistema.
+$routes->get('([A-Za-z0-9_]+)', 'Home::tenantByBase/$1');

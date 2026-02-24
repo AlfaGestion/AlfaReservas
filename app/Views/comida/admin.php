@@ -4,11 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Comida</title>
-    <link rel="icon" href="<?= base_url('favicon.ico') ?>" type="image/x-icon">
+    <link rel="icon" href="<?= base_url('alfa.png') ?>" type="image/png">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
 <body style="background-color:#f7f7f7;">
     <div class="container py-3">
+        <div class="d-flex justify-content-end mb-2">
+            <img src="<?= base_url('alfa.png') ?>" alt="Alfa" style="height: 38px;">
+        </div>
+
         <?php if (session('msg')) : ?>
             <div class="alert alert-<?= session('msg.type') ?> alert-dismissible fade show" role="alert">
                 <small><?= session('msg.body') ?></small>

@@ -18,6 +18,171 @@ use DateTime;
 
 class Home extends BaseController
 {
+    private function normalizeTenantSlug(string $value): string
+    {
+        $value = strtolower(trim($value));
+        if ($value === '') {
+            return '';
+        }
+
+        $normalized = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $value);
+        if (is_string($normalized) && $normalized !== '') {
+            $value = $normalized;
+        }
+
+        $value = preg_replace('/[^a-z0-9_]+/', '_', $value);
+        $value = trim((string) $value, '_');
+
+        return $value;
+    }
+
+    private function extractNormalizedSlugFromLink(?string $link): string
+    {
+        $link = trim((string) $link);
+        if ($link === '') {
+            return '';
+        }
+
+        $path = $link;
+        if (preg_match('#^https?://#i', $link) === 1) {
+            $parsedPath = parse_url($link, PHP_URL_PATH);
+            $path = is_string($parsedPath) ? $parsedPath : '';
+        }
+
+        $path = trim($path, '/');
+        if ($path === '') {
+            return '';
+        }
+
+        $segments = explode('/', $path);
+        $last = (string) end($segments);
+
+        return $this->normalizeTenantSlug($last);
+    }
+
+    public function tenantByBase(string $base)
+    {
+        $base = $this->normalizeTenantSlug($base);
+
+        if ($base === '' || !preg_match('/^[a-z0-9_]+$/', $base)) {
+            throw \CodeIgniter\Exceptions\PageNotFoundException::forPageNotFound();
+        }
+
+        $dbAlfa = Database::connect('alfareserva');
+        $cliente = $dbAlfa->table('clientes c')
+            ->select('c.codigo, c.base, c.habilitado, c.razon_social, c.link, r.descripcion AS rubro')
+            ->join('rubros r', 'r.id = c.id_rubro', 'left')
+            ->where('base', $base)
+            ->where('c.habilitado', 1)
+            ->get()
+            ->getRowArray();
+
+        if (!$cliente) {
+            $candidatos = $dbAlfa->table('clientes c')
+                ->select('c.codigo, c.base, c.habilitado, c.razon_social, c.link, r.descripcion AS rubro')
+                ->join('rubros r', 'r.id = c.id_rubro', 'left')
+                ->where('c.habilitado', 1)
+                ->where('c.link IS NOT NULL', null, false)
+                ->get()
+                ->getResultArray();
+
+            foreach ($candidatos as $candidato) {
+                if ($this->extractNormalizedSlugFromLink((string) ($candidato['link'] ?? '')) === $base) {
+                    $cliente = $candidato;
+                    break;
+                }
+            }
+        }
+
+        if (!$cliente || empty($cliente['codigo']) || (int) ($cliente['habilitado'] ?? 0) !== 1) {
+            throw \CodeIgniter\Exceptions\PageNotFoundException::forPageNotFound();
+        }
+
+        $rubro = strtolower(trim((string) ($cliente['rubro'] ?? '')));
+        if (!in_array($rubro, ['cancha', 'comida'], true)) {
+            throw \CodeIgniter\Exceptions\PageNotFoundException::forPageNotFound();
+        }
+
+        if ($rubro === 'comida') {
+            $codigo = (string) $cliente['codigo'];
+            $baseCliente = (string) ($cliente['base'] ?? '');
+
+            if ($baseCliente === '') {
+                throw \CodeIgniter\Exceptions\PageNotFoundException::forPageNotFound();
+            }
+
+            $baseExists = $dbAlfa->query(
+                'SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = ? LIMIT 1',
+                [$baseCliente]
+            )->getRowArray();
+
+            if (!$baseExists) {
+                throw \CodeIgniter\Exceptions\PageNotFoundException::forPageNotFound();
+            }
+
+            session()->set([
+                'tenant_codigo' => $cliente['codigo'],
+                'tenant_base' => $baseCliente,
+                'tenant_rubro' => $cliente['rubro'],
+            ]);
+
+            return view('comida/index', [
+                'cliente' => $cliente,
+                'branding' => $this->getComidaBranding($codigo),
+                'catalogo' => $this->getComidaCatalogo($baseCliente),
+            ]);
+        }
+
+        return $this->tenant((string) $cliente['codigo']);
+    }
+
+    private function getComidaCatalogo(string $databaseName): array
+    {
+        $dbAlfa = Database::connect('alfareserva');
+        $exists = $dbAlfa->query(
+            "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'catalogo' LIMIT 1",
+            [$databaseName]
+        )->getRowArray();
+
+        if (!$exists) {
+            return [];
+        }
+
+        return $dbAlfa->query(
+            "SELECT id, nombre, descripcion, precio, activo
+             FROM `{$databaseName}`.`catalogo`
+             ORDER BY nombre ASC"
+        )->getResultArray();
+    }
+
+    private function getComidaBranding(string $codigo): array
+    {
+        $tenantDir = FCPATH . 'assets/tenants/' . $codigo . '/';
+        $logoCandidates = ['logo.png', 'logo.jpg', 'logo.jpeg', 'logo.webp'];
+        $backgroundCandidates = ['fondo.jpg', 'fondo.png', 'fondo.webp', 'background.jpg', 'background.png', 'background.webp'];
+
+        $logoUrl = null;
+        foreach ($logoCandidates as $file) {
+            if (is_file($tenantDir . $file)) {
+                $logoUrl = base_url('assets/tenants/' . $codigo . '/' . $file);
+                break;
+            }
+        }
+
+        $backgroundUrl = null;
+        foreach ($backgroundCandidates as $file) {
+            if (is_file($tenantDir . $file)) {
+                $backgroundUrl = base_url('assets/tenants/' . $codigo . '/' . $file);
+                break;
+            }
+        }
+
+        return [
+            'logo' => $logoUrl,
+            'background' => $backgroundUrl,
+        ];
+    }
+
     public function tenant(string $codigo)
     {
         if (!preg_match('/^[0-9]{9}$/', $codigo)) {

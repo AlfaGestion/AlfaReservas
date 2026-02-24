@@ -65,8 +65,16 @@
                         <input type="text" class="form-control" id="razon_social" name="razon_social" required>
                     </div>
                     <div class="mb-2">
-                        <label for="base" class="form-label">Base</label>
-                        <input type="text" class="form-control" id="base" name="base" required>
+                        <label for="base_preview" class="form-label">Base (generada desde razón social)</label>
+                        <input type="text" class="form-control" id="base_preview" readonly>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">Link completo</label>
+                        <div class="small text-muted mb-2" id="link_preview">-</div>
+                        <div class="input-group">
+                            <span class="input-group-text">/</span>
+                            <input type="text" class="form-control" id="link_path" name="link_path" placeholder="mi_cliente">
+                        </div>
                     </div>
                     <div class="mb-2">
                         <label for="id_rubro" class="form-label">Rubro</label>
@@ -94,3 +102,45 @@
         </div>
     </div>
 </div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const razonSocialInput = document.getElementById('razon_social');
+        const basePreviewInput = document.getElementById('base_preview');
+        const linkPreviewInput = document.getElementById('link_preview');
+        const linkPathInput = document.getElementById('link_path');
+        if (!razonSocialInput || !basePreviewInput || !linkPreviewInput) {
+            return;
+        }
+
+        const baseWeb = <?= json_encode(rtrim((string) env('app.baseURL', base_url('/')), '/')) ?>;
+
+        const normalizeKey = (value) => {
+            return value
+                .toLowerCase()
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .replace(/[^a-z0-9]+/g, '_')
+                .replace(/^_+|_+$/g, '')
+                .slice(0, 90);
+        };
+
+        const updatePreviews = () => {
+            const key = normalizeKey(razonSocialInput.value || '');
+            if (!linkPathInput.dataset.touched || linkPathInput.dataset.touched !== '1') {
+                linkPathInput.value = key;
+            }
+            const path = normalizeKey(linkPathInput.value || '');
+            linkPathInput.value = path;
+            basePreviewInput.value = key;
+            linkPreviewInput.textContent = path ? (baseWeb + '/' + path) : '-';
+        };
+
+        razonSocialInput.addEventListener('input', updatePreviews);
+        linkPathInput.addEventListener('input', function () {
+            linkPathInput.dataset.touched = '1';
+            updatePreviews();
+        });
+        updatePreviews();
+    });
+</script>
