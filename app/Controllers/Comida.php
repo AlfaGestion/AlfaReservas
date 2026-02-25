@@ -6,9 +6,24 @@ use Config\Database;
 
 class Comida extends BaseController
 {
+    private function renderTenantBlocked(array $cliente)
+    {
+        return response()
+            ->setStatusCode(403)
+            ->setBody(view('tenant_access_blocked', [
+                'title' => 'Acceso no disponible',
+                'message' => (string) ($cliente['tenant_access_message'] ?? 'No podes ingresar en este momento.'),
+                'cliente' => $cliente,
+            ]));
+    }
+
     public function index(string $codigo)
     {
         $cliente = $this->resolveClienteComida($codigo);
+        if (!(bool) ($cliente['tenant_access_allowed'] ?? true)) {
+            return $this->renderTenantBlocked($cliente);
+        }
+
         \Config\Services::tenant()->activate($cliente);
 
         $branding = $this->getBranding($codigo);
@@ -18,12 +33,24 @@ class Comida extends BaseController
             'cliente' => $cliente,
             'branding' => $branding,
             'catalogo' => $catalogo,
+            'tenantNotice' => $cliente['tenant_access_notice'] ?? null,
+            'tenantMode' => $cliente['tenant_access_mode'] ?? 'full',
         ]);
     }
 
     public function reservar(string $codigo)
     {
         $cliente = $this->resolveClienteComida($codigo);
+        if (!(bool) ($cliente['tenant_access_allowed'] ?? true)) {
+            return $this->renderTenantBlocked($cliente);
+        }
+        if ((string) ($cliente['tenant_access_mode'] ?? 'full') === 'read_only') {
+            return redirect()->to('/pedidos/' . $codigo)->with('msg', [
+                'type' => 'warning',
+                'body' => (string) ($cliente['tenant_access_notice'] ?? 'Modo solo lectura activo.'),
+            ]);
+        }
+
         $dbAlfa = Database::connect('alfareserva');
         $base = (string) $cliente['base'];
 
@@ -127,19 +154,14 @@ class Comida extends BaseController
             throw \CodeIgniter\Exceptions\PageNotFoundException::forPageNotFound();
         }
 
-        $dbAlfa = Database::connect('alfareserva');
-        $cliente = $dbAlfa->table('clientes c')
-            ->select('c.codigo, c.base, c.habilitado, c.razon_social, r.descripcion AS rubro')
-            ->join('rubros r', 'r.id = c.id_rubro', 'left')
-            ->where('c.codigo', $codigo)
-            ->where('c.habilitado', 1)
-            ->get()
-            ->getRowArray();
+        $tenant = \Config\Services::tenant();
+        $cliente = $tenant->resolveByCodigo($codigo);
 
         if (!$cliente) {
             throw \CodeIgniter\Exceptions\PageNotFoundException::forPageNotFound();
         }
 
+        $dbAlfa = Database::connect('alfareserva');
         $rubro = strtolower(trim((string) ($cliente['rubro'] ?? '')));
         if (!in_array($rubro, ['comida', 'pedidos'], true)) {
             throw \CodeIgniter\Exceptions\PageNotFoundException::forPageNotFound();

@@ -6,15 +6,35 @@ use Config\Database;
 
 class ComidaAdmin extends BaseController
 {
+    private function renderTenantBlocked(array $cliente)
+    {
+        return response()
+            ->setStatusCode(403)
+            ->setBody(view('tenant_access_blocked', [
+                'title' => 'Acceso no disponible',
+                'message' => (string) ($cliente['tenant_access_message'] ?? 'No podes ingresar en este momento.'),
+                'cliente' => $cliente,
+            ]));
+    }
+
     public function login(string $codigo)
     {
         $cliente = $this->resolveClienteComida($codigo);
-        return view('comida/admin_login', ['cliente' => $cliente]);
+        if (!(bool) ($cliente['tenant_access_allowed'] ?? true)) {
+            return $this->renderTenantBlocked($cliente);
+        }
+        return view('comida/admin_login', [
+            'cliente' => $cliente,
+            'tenantNotice' => $cliente['tenant_access_notice'] ?? null,
+        ]);
     }
 
     public function doLogin(string $codigo)
     {
         $cliente = $this->resolveClienteComida($codigo);
+        if (!(bool) ($cliente['tenant_access_allowed'] ?? true)) {
+            return $this->renderTenantBlocked($cliente);
+        }
         $base = (string) $cliente['base'];
         $usuario = trim((string) $this->request->getVar('usuario'));
         $password = (string) $this->request->getVar('password');
@@ -101,6 +121,9 @@ class ComidaAdmin extends BaseController
     public function index(string $codigo)
     {
         $cliente = $this->resolveClienteComida($codigo);
+        if (!(bool) ($cliente['tenant_access_allowed'] ?? true)) {
+            return $this->renderTenantBlocked($cliente);
+        }
         if (!$this->isTenantAdminLogged($codigo)) {
             return redirect()->to('/pedidos/' . $codigo . '/admin/login');
         }
@@ -112,12 +135,23 @@ class ComidaAdmin extends BaseController
             'cliente' => $cliente,
             'catalogo' => $catalogo,
             'tenantAdminUser' => (string) (session()->get('tenant_admin_user') ?? ''),
+            'tenantNotice' => $cliente['tenant_access_notice'] ?? null,
+            'tenantMode' => $cliente['tenant_access_mode'] ?? 'full',
         ]);
     }
 
     public function saveCatalogo(string $codigo)
     {
         $cliente = $this->resolveClienteComida($codigo);
+        if (!(bool) ($cliente['tenant_access_allowed'] ?? true)) {
+            return $this->renderTenantBlocked($cliente);
+        }
+        if ((string) ($cliente['tenant_access_mode'] ?? 'full') === 'read_only') {
+            return redirect()->to('/pedidos/' . $codigo . '/admin')->with('msg', [
+                'type' => 'warning',
+                'body' => (string) ($cliente['tenant_access_notice'] ?? 'Modo solo lectura activo.'),
+            ]);
+        }
         if (!$this->isTenantAdminLogged($codigo)) {
             return redirect()->to('/pedidos/' . $codigo . '/admin/login');
         }
@@ -159,14 +193,8 @@ class ComidaAdmin extends BaseController
             throw \CodeIgniter\Exceptions\PageNotFoundException::forPageNotFound();
         }
 
-        $dbAlfa = Database::connect('alfareserva');
-        $cliente = $dbAlfa->table('clientes c')
-            ->select('c.codigo, c.base, c.habilitado, c.razon_social, r.descripcion AS rubro')
-            ->join('rubros r', 'r.id = c.id_rubro', 'left')
-            ->where('c.codigo', $codigo)
-            ->where('c.habilitado', 1)
-            ->get()
-            ->getRowArray();
+        $tenant = \Config\Services::tenant();
+        $cliente = $tenant->resolveByCodigo($codigo);
 
         if (!$cliente) {
             throw \CodeIgniter\Exceptions\PageNotFoundException::forPageNotFound();

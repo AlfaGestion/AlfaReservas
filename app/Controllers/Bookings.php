@@ -18,6 +18,34 @@ use CodeIgniter\I18n\Time;
 
 class Bookings extends BaseController
 {
+    private function guardTenantWriteAccess()
+    {
+        if ((int) (session()->get('tenant_active') ?? 0) !== 1) {
+            return null;
+        }
+
+        $codigo = (string) (session()->get('tenant_codigo') ?? '');
+        if ($codigo === '') {
+            return null;
+        }
+
+        $tenant = \Config\Services::tenant();
+        $cliente = $tenant->resolveByCodigo($codigo);
+        if (!$cliente) {
+            return $this->response->setJSON($this->setResponse(403, true, null, 'Cliente no disponible.'));
+        }
+
+        $mode = (string) ($cliente['tenant_access_mode'] ?? 'full');
+        if ($mode === 'blocked') {
+            return $this->response->setJSON($this->setResponse(403, true, null, (string) ($cliente['tenant_access_message'] ?? 'Cuenta suspendida.')));
+        }
+        if ($mode === 'read_only') {
+            return $this->response->setJSON($this->setResponse(403, true, null, (string) ($cliente['tenant_access_notice'] ?? 'Modo solo lectura activo.')));
+        }
+
+        return null;
+    }
+
     private function isClosedForDateField($date, $fieldId)
     {
         if (empty($date)) {
@@ -42,8 +70,7 @@ class Bookings extends BaseController
     private function sendBookingEmail($bookingId)
     {
         $configModel = new ConfigModel();
-        $toRow = $configModel->where('clave', 'email_reservas')->first();
-        $toEmail = $toRow['valor'] ?? '';
+        $toEmail = $configModel->getValue('email_reservas');
         if (!is_string($toEmail) || trim($toEmail) === '') {
             return;
         }
@@ -102,6 +129,10 @@ class Bookings extends BaseController
 
     public function saveBooking()
     {
+        if ($blocked = $this->guardTenantWriteAccess()) {
+            return $blocked;
+        }
+
         $bookingsModel = new BookingsModel();
         $bookingSlotsModel = new BookingSlotsModel();
         $customersModel = new CustomersModel();
@@ -322,6 +353,10 @@ class Bookings extends BaseController
 
     public function completePayment($id)
     {
+        if ($blocked = $this->guardTenantWriteAccess()) {
+            return $blocked;
+        }
+
         $bookingsModel = new BookingsModel();
         $paymentsModel = new PaymentsModel();
         $data = $this->request->getJSON();
@@ -538,6 +573,10 @@ class Bookings extends BaseController
 
     public function cancelBooking()
     {
+        if ($blocked = $this->guardTenantWriteAccess()) {
+            return $blocked;
+        }
+
         $mercadoPagoModel = new MercadoPagoModel();
         $bookingsModel = new BookingsModel();
         $bookingSlotsModel = new BookingSlotsModel();
@@ -563,6 +602,10 @@ class Bookings extends BaseController
 
     public function editBooking()
     {
+        if ($blocked = $this->guardTenantWriteAccess()) {
+            return $blocked;
+        }
+
         $bookingsModel = new BookingsModel();
         $bookingSlotsModel = new BookingSlotsModel();
         $data = $this->request->getJSON();
@@ -679,6 +722,10 @@ class Bookings extends BaseController
 
     public function confirmMP()
     {
+        if ($blocked = $this->guardTenantWriteAccess()) {
+            return $blocked;
+        }
+
         $bookingsModel = new BookingsModel();
         $data = $this->request->getJSON();
 
@@ -693,6 +740,10 @@ class Bookings extends BaseController
 
     public function saveAdminBooking()
     {
+        if ($blocked = $this->guardTenantWriteAccess()) {
+            return $blocked;
+        }
+
         $bookingsModel = new BookingsModel();
         $bookingSlotsModel = new BookingSlotsModel();
         $customersModel = new CustomersModel();

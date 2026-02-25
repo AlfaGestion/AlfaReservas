@@ -111,10 +111,19 @@ $routes->group('', ['filter' => 'auth'], function ($routes) {
     $routes->post('getCancelReservations', 'Superadmin::getCancelReservations');
     $routes->post('deleteCancelReservation', 'Superadmin::deleteCancelReservation');
     $routes->post('saveConfigGeneral', 'Superadmin::saveConfigGeneral');
+    $routes->post('getClienteEstadoConfigAjax', 'Superadmin::getClienteEstadoConfigAjax');
+    $routes->post('saveClienteEstadoConfigAjax', 'Superadmin::saveClienteEstadoConfigAjax');
     $routes->post('deleteUser/(:any)', 'Superadmin::deleteUser/$1');
     $routes->post('saveCliente', 'Superadmin::saveCliente');
     $routes->post('toggleClienteStatus/(:num)', 'Superadmin::toggleClienteStatus/$1');
+    $routes->post('saveClienteAjax', 'Superadmin::saveClienteAjax');
+    $routes->post('toggleClienteStatusAjax', 'Superadmin::toggleClienteStatusAjax');
     $routes->post('saveRubro', 'Superadmin::saveRubro');
+    $routes->post('savePlan', 'Superadmin::savePlan');
+    $routes->post('saveRubroParametro', 'Superadmin::saveRubroParametro');
+    $routes->post('savePlanAjax', 'Superadmin::savePlanAjax');
+    $routes->post('saveRubroAjax', 'Superadmin::saveRubroAjax');
+    $routes->post('saveRubroParametroAjax', 'Superadmin::saveRubroParametroAjax');
 
     $routes->post('saveTime', 'Time::saveTime');
     $routes->get('getTime', 'Time::getTime');

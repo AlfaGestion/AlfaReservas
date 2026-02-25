@@ -78,8 +78,14 @@
                     <button class="nav-link active" id="nav-overview-tab" data-bs-toggle="tab" data-bs-target="#nav-overview" type="button" role="tab" aria-controls="nav-overview" aria-selected="true">
                         <i class="fa-solid fa-chart-line"></i> Resumen
                     </button>
+                    <button class="nav-link" id="nav-config-tab" data-bs-toggle="tab" data-bs-target="#nav-config" type="button" role="tab" aria-controls="nav-config" aria-selected="false">
+                        <i class="fa-solid fa-gear"></i> Configuración
+                    </button>
                     <button class="nav-link" id="nav-customers-tab" data-bs-toggle="tab" data-bs-target="#nav-customers" type="button" role="tab" aria-controls="nav-customers" aria-selected="false">
                         <i class="fa-solid fa-user-group"></i> Clientes
+                    </button>
+                    <button class="nav-link" id="nav-planes-tab" data-bs-toggle="tab" data-bs-target="#nav-planes" type="button" role="tab" aria-controls="nav-planes" aria-selected="false">
+                        <i class="fa-solid fa-layer-group"></i> Planes
                     </button>
                     <button class="nav-link" id="nav-rubros-tab" data-bs-toggle="tab" data-bs-target="#nav-rubros" type="button" role="tab" aria-controls="nav-rubros" aria-selected="false">
                         <i class="fa-solid fa-tags"></i> Rubros
@@ -91,11 +97,20 @@
                 <div class="tab-pane fade show active" id="nav-overview" role="tabpanel" aria-labelledby="nav-overview-tab" tabindex="0">
                     <?= view('superadmin/tabOverview', ['superadminStats' => $superadminStats ?? []]) ?>
                 </div>
+                <div class="tab-pane fade" id="nav-config" role="tabpanel" aria-labelledby="nav-config-tab" tabindex="0">
+                    <?= view('superadmin/tabConfig', [
+                        'bookingEmail' => $bookingEmail ?? '',
+                        'clientes' => $clientes ?? [],
+                    ]) ?>
+                </div>
                 <div class="tab-pane fade" id="nav-customers" role="tabpanel" aria-labelledby="nav-customers-tab" tabindex="0">
                     <?= view('superadmin/tabCustomers', ['clientes' => $clientes ?? [], 'rubros' => $rubros ?? [], 'nextClienteCodigo' => $nextClienteCodigo ?? '112010001']) ?>
                 </div>
+                <div class="tab-pane fade" id="nav-planes" role="tabpanel" aria-labelledby="nav-planes-tab" tabindex="0">
+                    <?= view('superadmin/tabPlanes', ['planes' => $planes ?? []]) ?>
+                </div>
                 <div class="tab-pane fade" id="nav-rubros" role="tabpanel" aria-labelledby="nav-rubros-tab" tabindex="0">
-                    <?= view('superadmin/tabRubros', ['rubros' => $rubros ?? []]) ?>
+                    <?= view('superadmin/tabRubrosV2', ['rubros' => $rubros ?? [], 'rubroParametros' => $rubroParametros ?? []]) ?>
                 </div>
             </div>
         </div>
@@ -108,4 +123,7 @@
 <?php echo $this->endSection() ?>
 
 <?php echo $this->section('scripts') ?>
+<script src="<?= base_url(PUBLIC_FOLDER . "assets/js/superadminConfig.js?v=" . time()) ?>"></script>
+<script src="<?= base_url(PUBLIC_FOLDER . "assets/js/superadminMasterData.js?v=" . time()) ?>"></script>
+<script src="<?= base_url(PUBLIC_FOLDER . "assets/js/superadminClientes.js?v=" . time()) ?>"></script>
 <?php echo $this->endSection() ?>

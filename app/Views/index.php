@@ -21,6 +21,11 @@ $mpKeys = $mpKeysModel->first();
 <?php echo $this->section('content') ?>
 
 <div class="container">
+    <?php if (!empty($tenantAccessNotice ?? '')) : ?>
+        <div class="alert alert-warning mt-3" style="white-space: pre-line;">
+            <?= esc($tenantAccessNotice) ?>
+        </div>
+    <?php endif; ?>
 
 
     <!-- Modal de bienvenida -->
@@ -161,9 +166,9 @@ $mpKeys = $mpKeysModel->first();
                 </datalist>
 
                 <?php if (session()->logueado) : ?>
-                    <button type="button" class="btn" style="background-color: #f39323;" id="confirmarAdminReserva">Confirmar reserva</button>
+                    <button type="button" class="btn" style="background-color: #f39323;" id="confirmarAdminReserva" <?= (($tenantAccessMode ?? 'full') === 'read_only') ? 'disabled' : '' ?>>Confirmar reserva</button>
                 <?php else : ?>
-                    <button type="button" class="btn" style="background-color: #f39323;" id="confirmarReserva">Confirmar reserva</button>
+                    <button type="button" class="btn" style="background-color: #f39323;" id="confirmarReserva" <?= (($tenantAccessMode ?? 'full') === 'read_only') ? 'disabled' : '' ?>>Confirmar reserva</button>
                 <?php endif; ?>
 
                 <button type="button" class="btn" style="background-color: #5a5a5a; color: #ffffff" id="cancelarReserva">Cancelar reserva</button>

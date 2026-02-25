@@ -1,10 +1,7 @@
 <div id="generalButtons" class="mt-3">
     <?php if (session()->superadmin) : ?>
         <a type="button" href="<?= base_url('auth/register') ?>" class="btn btn-success mt-2 mb-2" id=""><i class="fa-solid fa-user-plus me-1"></i>Crear usuario</a>
-        <button type="button" class="btn btn-warning mt-2 mb-2" id="openRateModal" data-bs-toggle="modal" data-bs-target="#rateModal"><i class="fa-solid fa-percent me-1"></i>Editar porcentaje de reserva</button>
-        <button type="button" class="btn btn-primary mt-2 mb-2" id="openOfferRateModal" data-bs-toggle="modal" data-bs-target="#offerRateModal"><i class="fa-solid fa-percent me-1"></i>Editar porcentaje de oferta</button>
         <button type="button" class="btn btn-outline-dark mt-2 mb-2" id="toggleConfigPanel"><i class="fa-solid fa-gear me-1"></i>Configuración</button>
-        <button type="button" class="btn btn-outline-secondary mt-2 mb-2" id="toggleCancelReservations"><i class="fa-solid fa-calendar-xmark me-1"></i>Cierre de cancha</button>
     <?php endif; ?>
 
 </div>
@@ -95,18 +92,18 @@
             </div>
             <ul class="nav nav-tabs" id="configTabs" role="tablist">
                 <li class="nav-item" role="presentation">
-                    <button class="nav-link active" id="config-mp-tab" data-bs-toggle="tab" data-bs-target="#config-mp" type="button" role="tab">Mercado Pago</button>
+                    <button class="nav-link" id="config-mp-tab" data-bs-toggle="tab" data-bs-target="#config-mp" type="button" role="tab">Mercado Pago</button>
                 </li>
                 <li class="nav-item" role="presentation">
                     <button class="nav-link" id="config-fondo-tab" data-bs-toggle="tab" data-bs-target="#config-fondo" type="button" role="tab">Fondo</button>
                 </li>
                 <li class="nav-item" role="presentation">
-                    <button class="nav-link" id="config-general-tab" data-bs-toggle="tab" data-bs-target="#config-general" type="button" role="tab">General</button>
+                    <button class="nav-link active" id="config-general-tab" data-bs-toggle="tab" data-bs-target="#config-general" type="button" role="tab">General</button>
                 </li>
             </ul>
 
             <div class="tab-content pt-3">
-                <div class="tab-pane fade show active" id="config-mp" role="tabpanel">
+                <div class="tab-pane fade" id="config-mp" role="tabpanel">
                     <a href="<?= base_url('configMpView') ?>" type="button" class="btn btn-light">
                         <img src="<?= base_url(PUBLIC_FOLDER . 'assets/images/mercado-pago.jfif') ?>" alt="Icono Mercado Pago" width="10%" height="5%"> Configurar Mercado Pago
                     </a>
@@ -114,7 +111,7 @@
                 <div class="tab-pane fade" id="config-fondo" role="tabpanel">
                     <a href="<?= base_url('upload') ?>" type="button" class="btn btn-info"><i class="fa-solid fa-file-arrow-up me-1"></i>Cambiar fondo</a>
                 </div>
-                <div class="tab-pane fade" id="config-general" role="tabpanel">
+                <div class="tab-pane fade show active" id="config-general" role="tabpanel">
                     <div class="form-floating mb-3">
                         <textarea class="form-control" id="closureTextConfig" style="height: 160px" placeholder="Texto de cierre"><?= isset($closureText) ? $closureText : '' ?></textarea>
                         <label for="closureTextConfig">Texto de cierre (usar &lt;fecha&gt;)</label>

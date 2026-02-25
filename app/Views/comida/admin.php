@@ -20,6 +20,11 @@
                 <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
             </div>
         <?php endif; ?>
+        <?php if (!empty($tenantNotice)) : ?>
+            <div class="alert alert-warning" role="alert">
+                <small><?= esc($tenantNotice) ?></small>
+            </div>
+        <?php endif; ?>
 
         <div class="d-flex justify-content-between align-items-center mb-3">
             <div>
@@ -62,7 +67,7 @@
                                 </div>
                             </div>
                             <div class="mt-3">
-                                <button type="submit" class="btn" style="background-color:#f39323; color:#fff;">Guardar item</button>
+                                <button type="submit" class="btn" style="background-color:#f39323; color:#fff;" <?= (($tenantMode ?? 'full') === 'read_only') ? 'disabled' : '' ?>>Guardar item</button>
                                 <a href="<?= base_url('pedidos/' . ($cliente['codigo'] ?? '')) ?>" class="btn btn-secondary">Volver al portal</a>
                             </div>
                         </form>

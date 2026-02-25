@@ -18,6 +18,20 @@ use DateTime;
 
 class Home extends BaseController
 {
+    private function renderTenantBlocked(array $cliente)
+    {
+        $title = 'Acceso no disponible';
+        $message = (string) ($cliente['tenant_access_message'] ?? 'No podes ingresar en este momento.');
+
+        return response()
+            ->setStatusCode(403)
+            ->setBody(view('tenant_access_blocked', [
+                'title' => $title,
+                'message' => $message,
+                'cliente' => $cliente,
+            ]));
+    }
+
     public function tenantByBase(string $base)
     {
         $tenant = \Config\Services::tenant();
@@ -28,9 +42,6 @@ class Home extends BaseController
         }
 
         $rubro = strtolower(trim((string) ($cliente['rubro'] ?? '')));
-        if (!in_array($rubro, ['cancha', 'comida', 'pedidos'], true)) {
-            throw \CodeIgniter\Exceptions\PageNotFoundException::forPageNotFound();
-        }
 
         if (in_array($rubro, ['comida', 'pedidos'], true)) {
             $codigo = (string) $cliente['codigo'];
@@ -50,12 +61,18 @@ class Home extends BaseController
                 throw \CodeIgniter\Exceptions\PageNotFoundException::forPageNotFound();
             }
 
+            if (!(bool) ($cliente['tenant_access_allowed'] ?? true)) {
+                return $this->renderTenantBlocked($cliente);
+            }
+
             $tenant->activate($cliente);
 
             return view('comida/index', [
                 'cliente' => $cliente,
                 'branding' => $this->getComidaBranding($codigo),
                 'catalogo' => $this->getComidaCatalogo($baseCliente),
+                'tenantNotice' => $cliente['tenant_access_notice'] ?? null,
+                'tenantMode' => $cliente['tenant_access_mode'] ?? 'full',
             ]);
         }
 
@@ -119,12 +136,13 @@ class Home extends BaseController
         }
 
         $rubro = strtolower(trim((string) ($cliente['rubro'] ?? '')));
-        if (!in_array($rubro, ['cancha', 'comida', 'pedidos'], true)) {
-            return $this->response->setStatusCode(400)->setBody('El link del cliente no corresponde a un rubro habilitado.');
-        }
 
         if (in_array($rubro, ['comida', 'pedidos'], true)) {
             return redirect()->to('/pedidos/' . $codigo);
+        }
+
+        if (!(bool) ($cliente['tenant_access_allowed'] ?? true)) {
+            return $this->renderTenantBlocked($cliente);
         }
 
         $tenant->activate($cliente);
@@ -166,6 +184,8 @@ class Home extends BaseController
         $timeModel = new TimeModel();
         $openingTime = $timeModel->getOpeningTime();
         $isSunday = $timeModel->first()['is_sunday'];
+        $tenantAccessMode = (string) (session()->get('tenant_access_mode') ?? 'full');
+        $tenantAccessNotice = trim((string) (session()->get('tenant_access_notice') ?? ''));
 
 
         // $time = [];
@@ -196,7 +216,15 @@ class Home extends BaseController
         //     }
         // }
 
-        return view('index', ['fields' => $fields, 'time' => $openingTime, 'oferta' => $oferta, 'esDomingo' => $isSunday, 'localities' => $localities]);
+        return view('index', [
+            'fields' => $fields,
+            'time' => $openingTime,
+            'oferta' => $oferta,
+            'esDomingo' => $isSunday,
+            'localities' => $localities,
+            'tenantAccessMode' => $tenantAccessMode,
+            'tenantAccessNotice' => $tenantAccessNotice,
+        ]);
     }
 
     // public function deleteRejected()
@@ -319,8 +347,7 @@ class Home extends BaseController
         $configModel = new ConfigModel();
 
         $closures = $cancelModel->where('cancel_date', $date)->findAll();
-        $closureTextRow = $configModel->where('clave', 'texto_cierre')->first();
-        $closureText = $closureTextRow['valor'] ?? '';
+        $closureText = $configModel->getValue('texto_cierre');
         if (!is_string($closureText) || trim($closureText) === '') {
             $closureText = "Aviso importante\n\n"
                 . "Queremos informarles que el día <fecha> las canchas permanecerán cerradas.\n"
@@ -425,8 +452,7 @@ class Home extends BaseController
         }
 
         $closureDate = $nextClosure['cancel_date'];
-        $closureTextRow = $configModel->where('clave', 'texto_cierre')->first();
-        $closureText = $closureTextRow['valor'] ?? '';
+        $closureText = $configModel->getValue('texto_cierre');
         if (!is_string($closureText) || trim($closureText) === '') {
             $closureText = "Aviso importante\n\n"
                 . "Queremos informarles que el dia <fecha> las canchas permaneceran cerradas.\n"

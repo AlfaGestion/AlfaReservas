@@ -35,6 +35,11 @@
                 <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
             </div>
         <?php endif; ?>
+        <?php if (!empty($tenantNotice)) : ?>
+            <div class="alert alert-warning" role="alert">
+                <small><?= esc($tenantNotice) ?></small>
+            </div>
+        <?php endif; ?>
 
         <div class="mb-4">
             <?php if (!empty($branding['logo'])) : ?>
@@ -80,7 +85,7 @@
                         </div>
                     </div>
                     <div class="mt-3">
-                        <button type="submit" class="btn btn-primary" <?= empty($catalogo) ? 'disabled' : '' ?>>Guardar reserva</button>
+                        <button type="submit" class="btn btn-primary" <?= (empty($catalogo) || (($tenantMode ?? 'full') === 'read_only')) ? 'disabled' : '' ?>>Guardar reserva</button>
                     </div>
                 </form>
             </div>

@@ -28,6 +28,11 @@
                                 <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                             </div>
                         <?php endif; ?>
+                        <?php if (!empty($tenantNotice)) : ?>
+                            <div class="alert alert-warning" role="alert">
+                                <small><?= esc($tenantNotice) ?></small>
+                            </div>
+                        <?php endif; ?>
 
                         <form method="POST" action="<?= base_url('pedidos/' . ($cliente['codigo'] ?? '') . '/admin/login') ?>">
                             <div class="mb-3">

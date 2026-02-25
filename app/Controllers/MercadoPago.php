@@ -16,6 +16,34 @@ use App\Models\RateModel;
 
 class MercadoPago extends BaseController
 {
+    private function guardTenantWriteAccess()
+    {
+        if ((int) (session()->get('tenant_active') ?? 0) !== 1) {
+            return null;
+        }
+
+        $codigo = (string) (session()->get('tenant_codigo') ?? '');
+        if ($codigo === '') {
+            return null;
+        }
+
+        $tenant = \Config\Services::tenant();
+        $cliente = $tenant->resolveByCodigo($codigo);
+        if (!$cliente) {
+            return $this->response->setJSON($this->setResponse(403, true, null, 'Cliente no disponible.'));
+        }
+
+        $mode = (string) ($cliente['tenant_access_mode'] ?? 'full');
+        if ($mode === 'blocked') {
+            return $this->response->setJSON($this->setResponse(403, true, null, (string) ($cliente['tenant_access_message'] ?? 'Cuenta suspendida.')));
+        }
+        if ($mode === 'read_only') {
+            return $this->response->setJSON($this->setResponse(403, true, null, (string) ($cliente['tenant_access_notice'] ?? 'Modo solo lectura activo.')));
+        }
+
+        return null;
+    }
+
     private function getMercadoPagoPaidAmount($paymentId)
     {
         if (empty($paymentId)) {
@@ -92,8 +120,7 @@ class MercadoPago extends BaseController
     private function sendBookingEmail($bookingId)
     {
         $configModel = new ConfigModel();
-        $toRow = $configModel->where('clave', 'email_reservas')->first();
-        $toEmail = $toRow['valor'] ?? '';
+        $toEmail = $configModel->getValue('email_reservas');
         if (!is_string($toEmail) || trim($toEmail) === '') {
             return;
         }
@@ -151,6 +178,10 @@ class MercadoPago extends BaseController
     }
     public function setPreference()
     {
+        if ($blocked = $this->guardTenantWriteAccess()) {
+            return $blocked;
+        }
+
         try {
             $rateModel = new RateModel();
             $rateRow = $rateModel->first();
@@ -567,6 +598,10 @@ class MercadoPago extends BaseController
 
     public function cancelPendingMpReservation()
     {
+        if ($blocked = $this->guardTenantWriteAccess()) {
+            return $blocked;
+        }
+
         $bookingsModel = new BookingsModel();
         $bookingSlotsModel = new BookingSlotsModel();
         $data = $this->request->getJSON();
