@@ -347,6 +347,16 @@ class Superadmin extends BaseController
                 ->get()
                 ->getResultArray();
         }
+        $clientesHabilitados = array_reduce($clientes, static function (int $carry, array $cliente): int {
+            return $carry + (((int) ($cliente['habilitado'] ?? 0) === 1) ? 1 : 0);
+        }, 0);
+        $clientesDeshabilitados = max(count($clientes) - $clientesHabilitados, 0);
+        $superadminStats = [
+            'clientes_total' => count($clientes),
+            'clientes_habilitados' => $clientesHabilitados,
+            'clientes_deshabilitados' => $clientesDeshabilitados,
+            'rubros_total' => count($rubros),
+        ];
         $nextClienteCodigo = $this->getNextClienteCodigo();
         $localities = $localitiesModel->orderBy('name', 'ASC')->findAll();
         $closureTextRow = $configModel->where('clave', 'texto_cierre')->first();
@@ -367,6 +377,7 @@ class Superadmin extends BaseController
             'customers' => $customers,
             'clientes' => $clientes,
             'rubros' => $rubros,
+            'superadminStats' => $superadminStats,
             'nextClienteCodigo' => $nextClienteCodigo,
             'time' => $time,
             'openingTime' => $openingTime,
@@ -997,6 +1008,45 @@ class Superadmin extends BaseController
 
         return redirect()->to('/abmAdmin')->with('msg', ['type' => 'success', 'body' => 'Cliente creado correctamente.']);
     }
+
+    public function toggleClienteStatus(int $id)
+    {
+        $clientesModel = new ClientesModel();
+        $cliente = $clientesModel->find($id);
+
+        if (!$cliente) {
+            return redirect()->to('/abmAdmin')->with('msg', ['type' => 'danger', 'body' => 'Cliente no encontrado.']);
+        }
+
+        $nuevoEstado = ((int) ($cliente['habilitado'] ?? 0) === 1) ? 0 : 1;
+        $clientesModel->update($id, ['habilitado' => $nuevoEstado]);
+
+        $estadoTexto = $nuevoEstado === 1 ? 'habilitado' : 'deshabilitado';
+        return redirect()->to('/abmAdmin')->with('msg', ['type' => 'success', 'body' => 'Cliente ' . $estadoTexto . ' correctamente.']);
+    }
+
+    public function saveRubro()
+    {
+        $rubrosModel = new RubrosModel();
+        $descripcion = trim((string) $this->request->getVar('descripcion'));
+
+        if ($descripcion === '') {
+            return redirect()->to('/abmAdmin')->with('msg', ['type' => 'danger', 'body' => 'Debe ingresar una descripcion de rubro.']);
+        }
+
+        $existing = $rubrosModel
+            ->where('LOWER(TRIM(descripcion))', strtolower($descripcion), false)
+            ->first();
+
+        if ($existing) {
+            return redirect()->to('/abmAdmin')->with('msg', ['type' => 'warning', 'body' => 'Ese rubro ya existe.']);
+        }
+
+        $rubrosModel->insert(['descripcion' => $descripcion]);
+
+        return redirect()->to('/abmAdmin')->with('msg', ['type' => 'success', 'body' => 'Rubro creado correctamente.']);
+    }
+
     public function setResponse($code = 200, $error = false, $data = null, $message = '')
     {
         $response = [

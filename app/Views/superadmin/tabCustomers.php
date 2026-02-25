@@ -16,6 +16,7 @@
                 <th scope="col">Email</th>
                 <th scope="col">Habilitado</th>
                 <th scope="col">Link</th>
+                <th scope="col">Acciones</th>
             </tr>
         </thead>
         <tbody>
@@ -46,11 +47,20 @@
                                 -
                             <?php endif; ?>
                         </td>
+                        <td>
+                            <form action="<?= base_url('toggleClienteStatus/' . ($cliente['id'] ?? 0)) ?>" method="POST">
+                                <?php if ((int) ($cliente['habilitado'] ?? 0) === 1) : ?>
+                                    <button type="submit" class="btn btn-sm btn-outline-warning">Deshabilitar</button>
+                                <?php else : ?>
+                                    <button type="submit" class="btn btn-sm btn-outline-success">Habilitar</button>
+                                <?php endif; ?>
+                            </form>
+                        </td>
                     </tr>
                 <?php endforeach; ?>
             <?php else : ?>
                 <tr>
-                    <td colspan="8" class="text-center text-muted">No hay clientes cargados.</td>
+                    <td colspan="9" class="text-center text-muted">No hay clientes cargados.</td>
                 </tr>
             <?php endif; ?>
         </tbody>
