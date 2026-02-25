@@ -2,9 +2,7 @@
 
 namespace App\Models;
 
-use CodeIgniter\Model;
-
-class ConfigModel extends Model
+class ConfigModel extends TenantModel
 {
     protected $DBGroup          = 'default';
     protected $table            = 'ta_configuracion';

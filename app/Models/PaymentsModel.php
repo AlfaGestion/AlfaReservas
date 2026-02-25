@@ -3,9 +3,8 @@
 namespace App\Models;
 
 use CodeIgniter\I18n\Time;
-use CodeIgniter\Model;
 
-class PaymentsModel extends Model
+class PaymentsModel extends TenantModel
 {
     protected $DBGroup          = 'default';
     protected $table            = 'payments';

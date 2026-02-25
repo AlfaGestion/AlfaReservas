@@ -2,9 +2,7 @@
 
 namespace App\Models;
 
-use CodeIgniter\Model;
-
-class OffersModel extends Model
+class OffersModel extends TenantModel
 {
     protected $DBGroup          = 'default';
     protected $table            = 'offers';

@@ -2,9 +2,7 @@
 
 namespace App\Models;
 
-use CodeIgniter\Model;
-
-class LocalitiesModel extends Model
+class LocalitiesModel extends TenantModel
 {
     protected $DBGroup          = 'default';
     protected $table            = 'localities';

@@ -94,6 +94,8 @@ class Auth extends BaseController
             ->first();
 
         if (isset($userData) && (int) ($userData['active'] ?? 0) === 1 && password_verify($password, $userData['password'])) {
+            \Config\Services::tenant()->clear();
+
             $sessionData = [
                 'id_user'    => $userData['id'],
                 'user'       => $userData['user'],

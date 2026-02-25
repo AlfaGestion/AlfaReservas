@@ -3,9 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?= esc($cliente['razon_social'] ?? 'Portal comida') ?></title>
+    <title><?= esc($cliente['razon_social'] ?? 'Portal pedidos') ?></title>
     <link rel="icon" href="<?= base_url('alfa.png') ?>" type="image/png">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="<?= base_url(PUBLIC_FOLDER . "assets/css/theme.css") ?>">
     <style>
         body {
             min-height: 100vh;
@@ -45,8 +46,8 @@
 
         <div class="card portal-card shadow-sm">
             <div class="card-body">
-                <h5 class="mb-3">Nueva reserva de comida</h5>
-                <form action="<?= base_url('comida/' . ($cliente['codigo'] ?? '') . '/reservar') ?>" method="POST">
+                <h5 class="mb-3">Nuevo pedido</h5>
+                <form action="<?= base_url('pedidos/' . ($cliente['codigo'] ?? '') . '/reservar') ?>" method="POST">
                     <div class="row g-2">
                         <div class="col-md-4">
                             <label class="form-label" for="nombre">Nombre</label>
@@ -118,8 +119,9 @@
         </div>
 
         <div class="text-center mt-4 mb-2">
-            <a href="<?= base_url('comida/' . ($cliente['codigo'] ?? '') . '/admin') ?>" class="btn btn-outline-dark btn-sm">Acceso admin</a>
+            <a href="<?= base_url('pedidos/' . ($cliente['codigo'] ?? '') . '/admin') ?>" class="btn btn-outline-dark btn-sm">Acceso admin</a>
         </div>
     </div>
+    <script src="<?= base_url(PUBLIC_FOLDER . "assets/js/theme.js") ?>"></script>
 </body>
 </html>

@@ -9,12 +9,7 @@ class Comida extends BaseController
     public function index(string $codigo)
     {
         $cliente = $this->resolveClienteComida($codigo);
-
-        session()->set([
-            'tenant_codigo' => $cliente['codigo'],
-            'tenant_base' => $cliente['base'],
-            'tenant_rubro' => $cliente['rubro'],
-        ]);
+        \Config\Services::tenant()->activate($cliente);
 
         $branding = $this->getBranding($codigo);
         $catalogo = $this->getCatalogo((string) $cliente['base']);
@@ -39,7 +34,7 @@ class Comida extends BaseController
         $observaciones = trim((string) $this->request->getVar('observaciones'));
 
         if ($nombre === '' || $catalogoId <= 0 || $cantidad <= 0) {
-            return redirect()->to('/comida/' . $codigo)->with('msg', [
+            return redirect()->to('/pedidos/' . $codigo)->with('msg', [
                 'type' => 'danger',
                 'body' => 'Debe completar nombre, item del catalogo y cantidad.',
             ]);
@@ -51,7 +46,7 @@ class Comida extends BaseController
         )->getRowArray();
 
         if (!$catalogoExists) {
-            return redirect()->to('/comida/' . $codigo)->with('msg', [
+            return redirect()->to('/pedidos/' . $codigo)->with('msg', [
                 'type' => 'danger',
                 'body' => 'No existe la tabla catalogo para este cliente.',
             ]);
@@ -63,7 +58,7 @@ class Comida extends BaseController
         )->getRowArray();
 
         if (!$item || (int) ($item['activo'] ?? 0) !== 1) {
-            return redirect()->to('/comida/' . $codigo)->with('msg', [
+            return redirect()->to('/pedidos/' . $codigo)->with('msg', [
                 'type' => 'danger',
                 'body' => 'El item seleccionado no esta disponible.',
             ]);
@@ -108,7 +103,7 @@ class Comida extends BaseController
         )->getRowArray();
 
         if (!$reservasExists) {
-            return redirect()->to('/comida/' . $codigo)->with('msg', [
+            return redirect()->to('/pedidos/' . $codigo)->with('msg', [
                 'type' => 'danger',
                 'body' => 'No existe la tabla reservas para este cliente.',
             ]);
@@ -120,9 +115,9 @@ class Comida extends BaseController
             [$clienteId, $detalle]
         );
 
-        return redirect()->to('/comida/' . $codigo)->with('msg', [
+        return redirect()->to('/pedidos/' . $codigo)->with('msg', [
             'type' => 'success',
-            'body' => 'Reserva de comida registrada correctamente.',
+            'body' => 'Pedido registrado correctamente.',
         ]);
     }
 
@@ -146,7 +141,7 @@ class Comida extends BaseController
         }
 
         $rubro = strtolower(trim((string) ($cliente['rubro'] ?? '')));
-        if ($rubro !== 'comida') {
+        if (!in_array($rubro, ['comida', 'pedidos'], true)) {
             throw \CodeIgniter\Exceptions\PageNotFoundException::forPageNotFound();
         }
 

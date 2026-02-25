@@ -2,9 +2,7 @@
 
 namespace App\Models;
 
-use CodeIgniter\Model;
-
-class FieldsModel extends Model
+class FieldsModel extends TenantModel
 {
     protected $DBGroup          = 'default';
     protected $table            = 'fields';

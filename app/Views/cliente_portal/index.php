@@ -6,6 +6,7 @@
     <title><?= esc($cliente['razon_social'] ?? 'Portal cliente') ?></title>
     <link rel="icon" href="<?= esc($branding['logo']) ?>" type="image/png">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="<?= base_url(PUBLIC_FOLDER . "assets/css/theme.css") ?>">
     <style>
         body {
             min-height: 100vh;
@@ -67,6 +68,6 @@
             </div>
         </div>
     </div>
+    <script src="<?= base_url(PUBLIC_FOLDER . "assets/js/theme.js") ?>"></script>
 </body>
 </html>
-

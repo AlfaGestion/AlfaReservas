@@ -2,9 +2,7 @@
 
 namespace App\Models;
 
-use CodeIgniter\Model;
-
-class UploadModel extends Model
+class UploadModel extends TenantModel
 {
     protected $DBGroup          = 'default';
     protected $table            = 'uploads';

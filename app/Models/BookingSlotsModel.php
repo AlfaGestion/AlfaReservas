@@ -2,9 +2,7 @@
 
 namespace App\Models;
 
-use CodeIgniter\Model;
-
-class BookingSlotsModel extends Model
+class BookingSlotsModel extends TenantModel
 {
     protected $DBGroup          = 'default';
     protected $table            = 'booking_slots';

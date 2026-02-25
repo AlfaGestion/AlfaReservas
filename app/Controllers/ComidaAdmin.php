@@ -20,7 +20,7 @@ class ComidaAdmin extends BaseController
         $password = (string) $this->request->getVar('password');
 
         if ($usuario === '' || $password === '') {
-            return redirect()->to('/comida/' . $codigo . '/admin/login')->with('msg', [
+            return redirect()->to('/pedidos/' . $codigo . '/admin/login')->with('msg', [
                 'type' => 'danger',
                 'body' => 'Debe ingresar usuario y contrasena.',
             ]);
@@ -51,10 +51,10 @@ class ComidaAdmin extends BaseController
                     'tenant_admin_id' => 0,
                 ]);
 
-                return redirect()->to('/comida/' . $codigo . '/admin');
+                return redirect()->to('/pedidos/' . $codigo . '/admin');
             }
 
-            return redirect()->to('/comida/' . $codigo . '/admin/login')->with('msg', [
+            return redirect()->to('/pedidos/' . $codigo . '/admin/login')->with('msg', [
                 'type' => 'danger',
                 'body' => 'Sin usuarios configurados. Use testuser / Alfa2587.',
             ]);
@@ -68,7 +68,7 @@ class ComidaAdmin extends BaseController
         )->getRowArray();
 
         if (!$userRow || (int) ($userRow['active'] ?? 0) !== 1 || !password_verify($password, (string) ($userRow['password'] ?? ''))) {
-            return redirect()->to('/comida/' . $codigo . '/admin/login')->with('msg', [
+            return redirect()->to('/pedidos/' . $codigo . '/admin/login')->with('msg', [
                 'type' => 'danger',
                 'body' => 'Credenciales invalidas para esta base.',
             ]);
@@ -82,7 +82,7 @@ class ComidaAdmin extends BaseController
             'tenant_admin_id' => (int) ($userRow['id'] ?? 0),
         ]);
 
-        return redirect()->to('/comida/' . $codigo . '/admin');
+        return redirect()->to('/pedidos/' . $codigo . '/admin');
     }
 
     public function logout(string $codigo)
@@ -95,14 +95,14 @@ class ComidaAdmin extends BaseController
             'tenant_admin_id',
         ]);
 
-        return redirect()->to('/comida/' . $codigo . '/admin/login');
+        return redirect()->to('/pedidos/' . $codigo . '/admin/login');
     }
 
     public function index(string $codigo)
     {
         $cliente = $this->resolveClienteComida($codigo);
         if (!$this->isTenantAdminLogged($codigo)) {
-            return redirect()->to('/comida/' . $codigo . '/admin/login');
+            return redirect()->to('/pedidos/' . $codigo . '/admin/login');
         }
         $this->ensureCatalogoTable((string) $cliente['base']);
 
@@ -119,7 +119,7 @@ class ComidaAdmin extends BaseController
     {
         $cliente = $this->resolveClienteComida($codigo);
         if (!$this->isTenantAdminLogged($codigo)) {
-            return redirect()->to('/comida/' . $codigo . '/admin/login');
+            return redirect()->to('/pedidos/' . $codigo . '/admin/login');
         }
         $base = (string) $cliente['base'];
         $this->ensureCatalogoTable($base);
@@ -129,7 +129,7 @@ class ComidaAdmin extends BaseController
         $precio = (float) $this->request->getVar('precio');
 
         if ($nombre === '' || $precio < 0) {
-            return redirect()->to('/comida/' . $codigo . '/admin')->with('msg', [
+            return redirect()->to('/pedidos/' . $codigo . '/admin')->with('msg', [
                 'type' => 'danger',
                 'body' => 'Debe completar nombre y precio valido.',
             ]);
@@ -141,7 +141,7 @@ class ComidaAdmin extends BaseController
             [$nombre, $descripcion !== '' ? $descripcion : null, $precio]
         );
 
-        return redirect()->to('/comida/' . $codigo . '/admin')->with('msg', [
+        return redirect()->to('/pedidos/' . $codigo . '/admin')->with('msg', [
             'type' => 'success',
             'body' => 'Item de catalogo creado.',
         ]);
@@ -173,7 +173,7 @@ class ComidaAdmin extends BaseController
         }
 
         $rubro = strtolower(trim((string) ($cliente['rubro'] ?? '')));
-        if ($rubro !== 'comida') {
+        if (!in_array($rubro, ['comida', 'pedidos'], true)) {
             throw \CodeIgniter\Exceptions\PageNotFoundException::forPageNotFound();
         }
 

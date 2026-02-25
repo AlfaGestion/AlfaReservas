@@ -2,9 +2,7 @@
 
 namespace App\Models;
 
-use CodeIgniter\Model;
-
-class CancelReservationsModel extends Model
+class CancelReservationsModel extends TenantModel
 {
     protected $DBGroup          = 'default';
     protected $table            = 'cancel_reservations';

@@ -1,3 +1,16 @@
+<?php
+$formatRubroLabel = static function (?string $descripcion): string {
+    $valor = strtolower(trim((string) $descripcion));
+    return match ($valor) {
+        'cancha', 'canchas' => '🏟 Canchas',
+        'peluqueria', 'peluquería' => '💇 Peluquería',
+        'consultorio', 'consultorios' => '🏥 Consultorio',
+        'gimnasio', 'gimnasios' => '🏋 Gimnasio',
+        'comida', 'restaurante', 'restaurantes', 'pedidos' => '🍽 Pedidos',
+        default => trim((string) $descripcion) !== '' ? (string) $descripcion : 'Otro',
+    };
+};
+?>
 <!DOCTYPE html>
 <html lang="es">
 
@@ -8,18 +21,36 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-rbsA2VBKQhggwzxH7pPCaAqO46MgnOM80zW1RWuH61DGLwZJEdK2Kadq2F9CUG65" crossorigin="anonymous">
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-kenU1KFdBIe4zVF0s0G1M5b4hcpxyD9F7jL+jjXkk+Q2h455rYXK/7HAuoJl+0I4" crossorigin="anonymous"></script>
     <script src="https://kit.fontawesome.com/9bae38f407.js" crossorigin="anonymous"></script>
+    <link rel="stylesheet" href="<?= base_url(PUBLIC_FOLDER . "assets/css/theme.css") ?>">
     <link rel="icon" href="<?= base_url('alfa.png') ?>" type="image/png">
     <style>
         :root {
             --alfa-blue: #0b63b6;
             --alfa-sky: #dff1ff;
+            --bg-main: #f3f9ff;
+            --text-main: #1e3550;
+            --card-bg: #ffffff;
+            --card-border: #cfe6fb;
+            --hero-bg-start: #eef7ff;
+            --hero-bg-end: #dbedff;
+            --form-border: #d3e4f5;
         }
         body {
             min-height: 100vh;
             background:
                 radial-gradient(circle at 12% 18%, rgba(11,99,182,.20), transparent 28%),
                 radial-gradient(circle at 88% 8%, rgba(93,188,255,.28), transparent 22%),
-                #f3f9ff;
+                var(--bg-main);
+            color: var(--text-main);
+        }
+        body.theme-dark {
+            --bg-main: #0f1f2f;
+            --text-main: #dbe9f8;
+            --card-bg: #182d42;
+            --card-border: #2d4b67;
+            --hero-bg-start: #16324a;
+            --hero-bg-end: #1e3d58;
+            --form-border: #325372;
         }
         .register-shell {
             min-height: 100vh;
@@ -31,11 +62,12 @@
         .register-box {
             max-width: 980px;
             width: 100%;
-            background: #fff;
-            border: 1px solid #cfe6fb;
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
             border-radius: 18px;
             box-shadow: 0 18px 40px rgba(16,65,116,.14);
             padding: 2rem;
+            position: relative;
         }
         .top-info {
             text-align: center;
@@ -64,8 +96,8 @@
             gap: 20px;
         }
         .hero-panel {
-            background: linear-gradient(155deg, #eef7ff 0%, #dbedff 100%);
-            border: 1px solid #cfe6fb;
+            background: linear-gradient(155deg, var(--hero-bg-start) 0%, var(--hero-bg-end) 100%);
+            border: 1px solid var(--card-border);
             border-radius: 16px;
             padding: 1.4rem;
             display: flex;
@@ -94,6 +126,22 @@
         .hero-panel p {
             color: #3d5f7e;
             margin-bottom: .75rem;
+        }
+        body.theme-dark .hero-panel h2,
+        body.theme-dark .top-info h2,
+        body.theme-dark .plan-title,
+        body.theme-dark .price-line,
+        body.theme-dark .btn-outline-main {
+            color: #c7e4ff;
+        }
+        body.theme-dark .hero-panel p,
+        body.theme-dark .plan-price,
+        body.theme-dark .calc-label,
+        body.theme-dark .small.text-muted {
+            color: #a8c5e0 !important;
+        }
+        body.theme-dark .form-panel h3 {
+            color: #e6f4ff !important;
         }
         .pricing-grid {
             display: grid;
@@ -141,6 +189,23 @@
             border-color: #0b63b6;
             color: #fff;
         }
+        body.theme-dark .plan-card {
+            background: #1c2f43;
+            border-color: #3f6383;
+        }
+        body.theme-dark .plan-card.selected {
+            background: #244767;
+            border-color: #72a9d6;
+            box-shadow: 0 0 0 2px rgba(114,169,214,.22);
+        }
+        body.theme-dark .plan-check {
+            background: #1b344d;
+            border-color: #5b87ac;
+        }
+        body.theme-dark .plan-card.selected .plan-check {
+            background: #4f93c7;
+            border-color: #4f93c7;
+        }
         .calc-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -160,8 +225,8 @@
             font-weight: 700;
         }
         .form-panel {
-            background: #fff;
-            border: 1px solid #d3e4f5;
+            background: var(--card-bg);
+            border: 1px solid var(--form-border);
             border-radius: 16px;
             padding: 1.2rem;
         }
@@ -172,6 +237,17 @@
         }
         .form-panel .form-floating > .form-control {
             border-color: #bdd8f3;
+        }
+        body.theme-dark .form-panel .form-control,
+        body.theme-dark .form-panel .form-select,
+        body.theme-dark .form-panel .input-group-text {
+            background: #10273d;
+            border-color: #3f6486;
+            color: #dbe9f8;
+        }
+        body.theme-dark .form-panel .form-floating > label,
+        body.theme-dark .form-label {
+            color: #b9d4ed;
         }
         .form-panel .form-floating > .form-control:focus {
             border-color: #7ab6ea;
@@ -208,7 +284,6 @@
 <body>
     <div class="container register-shell">
         <div class="register-box">
-
             <div class="top-info">
                 <h2>ALFA RESERVAS</h2>
             </div>
@@ -310,7 +385,7 @@
                         <select name="id_rubro" id="id_rubro" class="form-select" required>
                             <option value="">Seleccionar rubro</option>
                             <?php foreach (($rubros ?? []) as $rubro) : ?>
-                                <option value="<?= esc($rubro['id']) ?>"><?= esc($rubro['descripcion']) ?></option>
+                                <option value="<?= esc($rubro['id']) ?>"><?= esc($formatRubroLabel($rubro['descripcion'] ?? null)) ?></option>
                             <?php endforeach; ?>
                         </select>
                     </div>
@@ -472,6 +547,7 @@
             });
         });
     </script>
+    <script src="<?= base_url(PUBLIC_FOLDER . "assets/js/theme.js") ?>"></script>
 </body>
 
 </html>

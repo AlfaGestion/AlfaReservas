@@ -2,9 +2,7 @@
 
 namespace App\Models;
 
-use CodeIgniter\Model;
-
-class RateModel extends Model
+class RateModel extends TenantModel
 {
     protected $DBGroup          = 'default';
     protected $table            = 'rate';

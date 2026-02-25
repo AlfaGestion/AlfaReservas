@@ -3,9 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login Admin Comida</title>
+    <title>Login Admin Pedidos</title>
     <link rel="icon" href="<?= base_url('alfa.png') ?>" type="image/png">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="<?= base_url(PUBLIC_FOLDER . "assets/css/theme.css") ?>">
 </head>
 <body class="bg-light">
     <div class="container py-5">
@@ -16,7 +17,7 @@
             <div class="col-md-5">
                 <div class="card shadow-sm">
                     <div class="card-body">
-                        <h4 class="mb-1">Admin Comida</h4>
+                        <h4 class="mb-1">Admin Pedidos</h4>
                         <p class="text-muted mb-3">
                             <?= esc($cliente['razon_social'] ?? '') ?> (<?= esc($cliente['codigo'] ?? '') ?>)
                         </p>
@@ -28,7 +29,7 @@
                             </div>
                         <?php endif; ?>
 
-                        <form method="POST" action="<?= base_url('comida/' . ($cliente['codigo'] ?? '') . '/admin/login') ?>">
+                        <form method="POST" action="<?= base_url('pedidos/' . ($cliente['codigo'] ?? '') . '/admin/login') ?>">
                             <div class="mb-3">
                                 <label for="usuario" class="form-label">Usuario o email</label>
                                 <input type="text" class="form-control" id="usuario" name="usuario" required>
@@ -38,7 +39,7 @@
                                 <input type="password" class="form-control" id="password" name="password" required>
                             </div>
                             <div class="d-flex justify-content-between">
-                                <a href="<?= base_url('comida/' . ($cliente['codigo'] ?? '')) ?>" class="btn btn-outline-secondary">Volver</a>
+                                <a href="<?= base_url('pedidos/' . ($cliente['codigo'] ?? '')) ?>" class="btn btn-outline-secondary">Volver</a>
                                 <button type="submit" class="btn btn-primary">Ingresar</button>
                             </div>
                         </form>
@@ -48,5 +49,6 @@
         </div>
     </div>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="<?= base_url(PUBLIC_FOLDER . "assets/js/theme.js") ?>"></script>
 </body>
 </html>

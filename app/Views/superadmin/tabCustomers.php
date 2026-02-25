@@ -26,7 +26,17 @@
                         <td><?= esc($cliente['codigo']) ?></td>
                         <td><?= esc($cliente['razon_social']) ?></td>
                         <td><?= esc($cliente['base']) ?></td>
-                        <td><?= esc($cliente['rubro_descripcion'] ?? '-') ?></td>
+                        <td><?php
+                            $rubroDesc = strtolower(trim((string) ($cliente['rubro_descripcion'] ?? '')));
+                            echo esc(match ($rubroDesc) {
+                                'cancha', 'canchas' => '🏟 Canchas',
+                                'peluqueria', 'peluquería' => '💇 Peluquería',
+                                'consultorio', 'consultorios' => '🏥 Consultorio',
+                                'gimnasio', 'gimnasios' => '🏋 Gimnasio',
+                                'comida', 'restaurante', 'restaurantes', 'pedidos' => '🍽 Pedidos',
+                                default => ($cliente['rubro_descripcion'] ?? '-'),
+                            });
+                        ?></td>
                         <td><?= esc($cliente['email']) ?></td>
                         <td><?= ((int) ($cliente['habilitado'] ?? 0) === 1) ? 'Si' : 'No' ?></td>
                         <td>
@@ -82,7 +92,18 @@
                             <?php if (!empty($rubros)) : ?>
                                 <option value="">Seleccionar rubro</option>
                                 <?php foreach ($rubros as $rubro) : ?>
-                                    <option value="<?= esc($rubro['id']) ?>"><?= esc($rubro['descripcion']) ?></option>
+                                    <?php
+                                    $rubroDesc = strtolower(trim((string) ($rubro['descripcion'] ?? '')));
+                                    $rubroLabel = match ($rubroDesc) {
+                                        'cancha', 'canchas' => '🏟 Canchas',
+                                        'peluqueria', 'peluquería' => '💇 Peluquería',
+                                        'consultorio', 'consultorios' => '🏥 Consultorio',
+                                        'gimnasio', 'gimnasios' => '🏋 Gimnasio',
+                                        'comida', 'restaurante', 'restaurantes', 'pedidos' => '🍽 Pedidos',
+                                        default => ($rubro['descripcion'] ?? '-'),
+                                    };
+                                    ?>
+                                    <option value="<?= esc($rubro['id']) ?>"><?= esc($rubroLabel) ?></option>
                                 <?php endforeach; ?>
                             <?php else : ?>
                                 <option value="">No hay rubros cargados</option>

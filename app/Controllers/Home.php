@@ -18,94 +18,24 @@ use DateTime;
 
 class Home extends BaseController
 {
-    private function normalizeTenantSlug(string $value): string
-    {
-        $value = strtolower(trim($value));
-        if ($value === '') {
-            return '';
-        }
-
-        $normalized = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $value);
-        if (is_string($normalized) && $normalized !== '') {
-            $value = $normalized;
-        }
-
-        $value = preg_replace('/[^a-z0-9_]+/', '_', $value);
-        $value = trim((string) $value, '_');
-
-        return $value;
-    }
-
-    private function extractNormalizedSlugFromLink(?string $link): string
-    {
-        $link = trim((string) $link);
-        if ($link === '') {
-            return '';
-        }
-
-        $path = $link;
-        if (preg_match('#^https?://#i', $link) === 1) {
-            $parsedPath = parse_url($link, PHP_URL_PATH);
-            $path = is_string($parsedPath) ? $parsedPath : '';
-        }
-
-        $path = trim($path, '/');
-        if ($path === '') {
-            return '';
-        }
-
-        $segments = explode('/', $path);
-        $last = (string) end($segments);
-
-        return $this->normalizeTenantSlug($last);
-    }
-
     public function tenantByBase(string $base)
     {
-        $base = $this->normalizeTenantSlug($base);
-
-        if ($base === '' || !preg_match('/^[a-z0-9_]+$/', $base)) {
-            throw \CodeIgniter\Exceptions\PageNotFoundException::forPageNotFound();
-        }
-
-        $dbAlfa = Database::connect('alfareserva');
-        $cliente = $dbAlfa->table('clientes c')
-            ->select('c.codigo, c.base, c.habilitado, c.razon_social, c.link, r.descripcion AS rubro')
-            ->join('rubros r', 'r.id = c.id_rubro', 'left')
-            ->where('base', $base)
-            ->where('c.habilitado', 1)
-            ->get()
-            ->getRowArray();
-
-        if (!$cliente) {
-            $candidatos = $dbAlfa->table('clientes c')
-                ->select('c.codigo, c.base, c.habilitado, c.razon_social, c.link, r.descripcion AS rubro')
-                ->join('rubros r', 'r.id = c.id_rubro', 'left')
-                ->where('c.habilitado', 1)
-                ->where('c.link IS NOT NULL', null, false)
-                ->get()
-                ->getResultArray();
-
-            foreach ($candidatos as $candidato) {
-                if ($this->extractNormalizedSlugFromLink((string) ($candidato['link'] ?? '')) === $base) {
-                    $cliente = $candidato;
-                    break;
-                }
-            }
-        }
+        $tenant = \Config\Services::tenant();
+        $cliente = $tenant->resolveBySlug($base);
 
         if (!$cliente || empty($cliente['codigo']) || (int) ($cliente['habilitado'] ?? 0) !== 1) {
             throw \CodeIgniter\Exceptions\PageNotFoundException::forPageNotFound();
         }
 
         $rubro = strtolower(trim((string) ($cliente['rubro'] ?? '')));
-        if (!in_array($rubro, ['cancha', 'comida'], true)) {
+        if (!in_array($rubro, ['cancha', 'comida', 'pedidos'], true)) {
             throw \CodeIgniter\Exceptions\PageNotFoundException::forPageNotFound();
         }
 
-        if ($rubro === 'comida') {
+        if (in_array($rubro, ['comida', 'pedidos'], true)) {
             $codigo = (string) $cliente['codigo'];
             $baseCliente = (string) ($cliente['base'] ?? '');
+            $dbAlfa = Database::connect('alfareserva');
 
             if ($baseCliente === '') {
                 throw \CodeIgniter\Exceptions\PageNotFoundException::forPageNotFound();
@@ -120,11 +50,7 @@ class Home extends BaseController
                 throw \CodeIgniter\Exceptions\PageNotFoundException::forPageNotFound();
             }
 
-            session()->set([
-                'tenant_codigo' => $cliente['codigo'],
-                'tenant_base' => $baseCliente,
-                'tenant_rubro' => $cliente['rubro'],
-            ]);
+            $tenant->activate($cliente);
 
             return view('comida/index', [
                 'cliente' => $cliente,
@@ -185,36 +111,23 @@ class Home extends BaseController
 
     public function tenant(string $codigo)
     {
-        if (!preg_match('/^[0-9]{9}$/', $codigo)) {
-            throw \CodeIgniter\Exceptions\PageNotFoundException::forPageNotFound();
-        }
-
-        $dbAlfa = Database::connect('alfareserva');
-        $cliente = $dbAlfa->table('clientes c')
-            ->select('c.codigo, c.base, c.habilitado, r.descripcion AS rubro')
-            ->join('rubros r', 'r.id = c.id_rubro', 'left')
-            ->where('c.codigo', $codigo)
-            ->get()
-            ->getRowArray();
+        $tenant = \Config\Services::tenant();
+        $cliente = $tenant->resolveByCodigo($codigo);
 
         if (!$cliente || (int) ($cliente['habilitado'] ?? 0) !== 1) {
             throw \CodeIgniter\Exceptions\PageNotFoundException::forPageNotFound();
         }
 
         $rubro = strtolower(trim((string) ($cliente['rubro'] ?? '')));
-        if (!in_array($rubro, ['cancha', 'comida'], true)) {
+        if (!in_array($rubro, ['cancha', 'comida', 'pedidos'], true)) {
             return $this->response->setStatusCode(400)->setBody('El link del cliente no corresponde a un rubro habilitado.');
         }
 
-        if ($rubro === 'comida') {
-            return redirect()->to('/comida/' . $codigo);
+        if (in_array($rubro, ['comida', 'pedidos'], true)) {
+            return redirect()->to('/pedidos/' . $codigo);
         }
 
-        session()->set([
-            'tenant_codigo' => $cliente['codigo'],
-            'tenant_base' => $cliente['base'],
-            'tenant_rubro' => $cliente['rubro'],
-        ]);
+        $tenant->activate($cliente);
 
         return $this->index();
     }

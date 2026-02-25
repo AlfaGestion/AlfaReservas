@@ -2,9 +2,7 @@
 
 namespace App\Models;
 
-use CodeIgniter\Model;
-
-class MercadoPagoKeysModel extends Model
+class MercadoPagoKeysModel extends TenantModel
 {
     protected $DBGroup          = 'default';
     protected $table            = 'mercado_pago_keys';

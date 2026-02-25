@@ -219,7 +219,7 @@ class Superadmin extends BaseController
         );
 
         $rubroNormalizado = strtolower(trim($rubroDescripcion));
-        if ($rubroNormalizado === 'comida') {
+        if (in_array($rubroNormalizado, ['comida', 'pedidos'], true)) {
             $db->query(
                 "CREATE TABLE IF NOT EXISTS `{$databaseName}`.`catalogo` (
                     `id` INT(10) UNSIGNED NOT NULL AUTO_INCREMENT,

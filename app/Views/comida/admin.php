@@ -3,9 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Comida</title>
+    <title>Admin Pedidos</title>
     <link rel="icon" href="<?= base_url('alfa.png') ?>" type="image/png">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="<?= base_url(PUBLIC_FOLDER . "assets/css/theme.css") ?>">
 </head>
 <body style="background-color:#f7f7f7;">
     <div class="container py-3">
@@ -27,11 +28,11 @@
             </div>
             <div class="text-end">
                 <small class="d-block text-muted">Sesion: <?= esc($tenantAdminUser ?? 'admin') ?></small>
-                <a href="<?= base_url('comida/' . ($cliente['codigo'] ?? '') . '/admin/logout') ?>" class="btn btn-outline-danger btn-sm mt-1">Cerrar sesion</a>
+                <a href="<?= base_url('pedidos/' . ($cliente['codigo'] ?? '') . '/admin/logout') ?>" class="btn btn-outline-danger btn-sm mt-1">Cerrar sesion</a>
             </div>
         </div>
 
-        <ul class="nav nav-tabs mb-3" id="comidaAdminTabs" role="tablist">
+        <ul class="nav nav-tabs mb-3" id="pedidosAdminTabs" role="tablist">
             <li class="nav-item" role="presentation">
                 <button class="nav-link active" id="catalogo-tab" data-bs-toggle="tab" data-bs-target="#catalogo-pane" type="button" role="tab" aria-controls="catalogo-pane" aria-selected="true">Catalogo</button>
             </li>
@@ -40,12 +41,12 @@
             </li>
         </ul>
 
-        <div class="tab-content" id="comidaAdminTabsContent">
+        <div class="tab-content" id="pedidosAdminTabsContent">
             <div class="tab-pane fade show active" id="catalogo-pane" role="tabpanel" aria-labelledby="catalogo-tab">
                 <div class="card mb-3">
                     <div class="card-body">
                         <h5 class="mb-3">Nuevo item de catalogo</h5>
-                        <form action="<?= base_url('comida/' . ($cliente['codigo'] ?? '') . '/admin/catalogo') ?>" method="POST">
+                        <form action="<?= base_url('pedidos/' . ($cliente['codigo'] ?? '') . '/admin/catalogo') ?>" method="POST">
                             <div class="row g-2">
                                 <div class="col-md-4">
                                     <label class="form-label" for="nombre">Nombre</label>
@@ -62,7 +63,7 @@
                             </div>
                             <div class="mt-3">
                                 <button type="submit" class="btn" style="background-color:#f39323; color:#fff;">Guardar item</button>
-                                <a href="<?= base_url('comida/' . ($cliente['codigo'] ?? '')) ?>" class="btn btn-secondary">Volver al portal</a>
+                                <a href="<?= base_url('pedidos/' . ($cliente['codigo'] ?? '')) ?>" class="btn btn-secondary">Volver al portal</a>
                             </div>
                         </form>
                     </div>
@@ -107,7 +108,7 @@
                 <div class="card">
                     <div class="card-body">
                         <h5 class="mb-2">Configuracion general</h5>
-                        <p class="text-muted mb-0">Esta pestaña queda preparada para los proximos ajustes de comida (horarios, estado del local, etc.).</p>
+                        <p class="text-muted mb-0">Esta pestaña queda preparada para los proximos ajustes de pedidos (horarios, estado del local, etc.).</p>
                     </div>
                 </div>
             </div>
@@ -115,5 +116,6 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="<?= base_url(PUBLIC_FOLDER . "assets/js/theme.js") ?>"></script>
 </body>
 </html>

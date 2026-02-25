@@ -30,6 +30,15 @@ $routes->set404Override();
 // We get a performance increase by specifying the default
 // route since we don't have to scan directories.
 $routes->get('([0-9]{9})', 'Home::tenant/$1');
+$routes->get('pedidos/([0-9]{9})', 'Comida::index/$1');
+$routes->post('pedidos/([0-9]{9})/reservar', 'Comida::reservar/$1');
+$routes->get('pedidos/([0-9]{9})/admin/login', 'ComidaAdmin::login/$1');
+$routes->post('pedidos/([0-9]{9})/admin/login', 'ComidaAdmin::doLogin/$1');
+$routes->get('pedidos/([0-9]{9})/admin/logout', 'ComidaAdmin::logout/$1');
+$routes->get('pedidos/([0-9]{9})/admin', 'ComidaAdmin::index/$1');
+$routes->post('pedidos/([0-9]{9})/admin/catalogo', 'ComidaAdmin::saveCatalogo/$1');
+
+// Compatibilidad legacy: rutas antiguas /comida/*
 $routes->get('comida/([0-9]{9})', 'Comida::index/$1');
 $routes->post('comida/([0-9]{9})/reservar', 'Comida::reservar/$1');
 $routes->get('comida/([0-9]{9})/admin/login', 'ComidaAdmin::login/$1');
@@ -104,6 +113,8 @@ $routes->group('', ['filter' => 'auth'], function ($routes) {
     $routes->post('saveConfigGeneral', 'Superadmin::saveConfigGeneral');
     $routes->post('deleteUser/(:any)', 'Superadmin::deleteUser/$1');
     $routes->post('saveCliente', 'Superadmin::saveCliente');
+    $routes->post('toggleClienteStatus/(:num)', 'Superadmin::toggleClienteStatus/$1');
+    $routes->post('saveRubro', 'Superadmin::saveRubro');
 
     $routes->post('saveTime', 'Time::saveTime');
     $routes->get('getTime', 'Time::getTime');
