@@ -115,6 +115,9 @@ if ($tenantCodigo !== '' && is_dir($tenantDir)) {
 
                     <?php if (session()->logueado) : ?>
                         <span class="me-1"><?= session()->name ?></span>
+                        <?php if (trim((string) (session()->get('admin_panel_path') ?? '')) !== '' && trim((string) (session()->get('admin_panel_path') ?? '')) !== '/abmAdmin') : ?>
+                            <a href="<?= base_url(ltrim((string) session()->get('admin_panel_path'), '/')) ?>" class="btn btn-outline-primary btn-sm me-1">Perfil</a>
+                        <?php endif; ?>
                         <a href="<?= base_url('auth/logOut') ?>" class="btn btn-danger me-1" type="button" id=""><i class="fa-solid fa-plug-circle-xmark"></i></a>
                     <?php endif; ?>
                 </div>
@@ -132,7 +135,7 @@ if ($tenantCodigo !== '' && is_dir($tenantDir)) {
                         <?php if (session()->logueado) : ?>
                             <ul class="nav justify-content-center border-bottom pb-3 mb-3">
                                 <li class="nav-item"><a href="<?= base_url('auth/logOut') ?>" class="nav-link px-2 text-muted">Cerrar sesión</a></li>
-                                <li class="nav-item"><a href="<?= base_url('abmAdmin') ?>" class="nav-link px-2 text-muted">Panel</a></li>
+                                <li class="nav-item"><a href="<?= base_url(ltrim(trim((string) (session()->get('admin_panel_path') ?? '/abmAdmin')), '/')) ?>" class="nav-link px-2 text-muted">Panel</a></li>
                             </ul>
                         <?php else : ?>
                             <ul class="nav justify-content-center border-bottom pb-3 mb-3">

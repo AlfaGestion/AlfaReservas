@@ -94,6 +94,13 @@ select {
     background-color: #eaf7ee;
 }
 
+body.theme-dark .booking-finalizada,
+body.theme-dark .booking-finalizada td,
+body.theme-dark .booking-finalizada th {
+    background-color: rgba(22, 84, 58, 0.55) !important;
+    color: #dff5ea !important;
+}
+
 .report-summary {
     cursor: pointer;
 }
@@ -196,4 +203,99 @@ select {
     30% { transform: translateX(-5px); }
     60% { transform: translateX(5px); }
     100% { transform: translateX(0); }
+}
+
+/* Legado admin reservas: asegurar contraste en modo claro/oscuro */
+#tableReports .table,
+#tableReservations .table,
+#tableCustomers .table {
+    background: transparent;
+}
+
+body.theme-dark #tableReports .table thead th,
+body.theme-dark #tableReservations .table thead th,
+body.theme-dark #tableCustomers .table thead th {
+    background: #15324d;
+    color: #e6f1fc;
+    border-color: #31587d;
+}
+
+body.theme-dark #tableReports .table tbody td,
+body.theme-dark #tableReservations .table tbody td,
+body.theme-dark #tableCustomers .table tbody td {
+    background: #102840;
+    color: #dbeaf9;
+    border-color: #2b4e71;
+}
+
+body.theme-dark #tableReports .table-striped-columns > :not(caption) > tr > :nth-child(2n),
+body.theme-dark #tableReservations .table-striped-columns > :not(caption) > tr > :nth-child(2n),
+body.theme-dark #tableCustomers .table-striped-columns > :not(caption) > tr > :nth-child(2n) {
+    background: #173451;
+}
+
+body.theme-dark .report-detail-box {
+    background: #17324b;
+    border-color: #2f5577;
+    color: #dbeaf9;
+}
+
+body.theme-dark #enterFields .input-group-text,
+body.theme-dark #openingTime .input-group-text,
+body.theme-dark #openingTime .form-check-label,
+body.theme-dark #selectDateReport .form-check-label {
+    background: #16324d;
+    color: #dbeaf9;
+    border-color: #31587d;
+}
+
+/* Cierre de cancha: contraste correcto en modo oscuro */
+body.theme-dark #cancelReservationsPanel .accordion-item,
+body.theme-dark #closuresTabList .accordion-item {
+    background: #152f46;
+    border-color: #2f5274;
+}
+
+body.theme-dark #cancelReservationsPanel .accordion-button,
+body.theme-dark #closuresTabList .accordion-button {
+    background: #1a3853;
+    color: #e3f0fc !important;
+    border-color: #2f5274;
+}
+
+body.theme-dark #cancelReservationsPanel .accordion-button:not(.collapsed),
+body.theme-dark #closuresTabList .accordion-button:not(.collapsed) {
+    background: #224564;
+    color: #ffffff !important;
+}
+
+body.theme-dark #cancelReservationsPanel .accordion-body,
+body.theme-dark #closuresTabList .accordion-body {
+    background: #122b42;
+    color: #dbeaf9 !important;
+}
+
+body.theme-dark #cancelReservationsPanel .table,
+body.theme-dark #closuresTabList .table {
+    color: #dbeaf9 !important;
+}
+
+body.theme-dark #cancelReservationsPanel .table thead th,
+body.theme-dark #closuresTabList .table thead th {
+    background: #183650;
+    color: #dbeaf9 !important;
+    border-color: #2f5274;
+}
+
+body.theme-dark #cancelReservationsPanel .table tbody td,
+body.theme-dark #closuresTabList .table tbody td {
+    background: #11283e;
+    color: #dbeaf9 !important;
+    border-color: #2f5274;
+}
+
+body.theme-dark #cancelReservationsPanel .badge.text-bg-secondary,
+body.theme-dark #closuresTabList .badge.text-bg-secondary {
+    background-color: #3d5f7e !important;
+    color: #e9f4ff !important;
 }

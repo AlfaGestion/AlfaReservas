@@ -78,40 +78,76 @@
                     <button class="nav-link active" id="nav-overview-tab" data-bs-toggle="tab" data-bs-target="#nav-overview" type="button" role="tab" aria-controls="nav-overview" aria-selected="true">
                         <i class="fa-solid fa-chart-line"></i> Resumen
                     </button>
-                    <button class="nav-link" id="nav-config-tab" data-bs-toggle="tab" data-bs-target="#nav-config" type="button" role="tab" aria-controls="nav-config" aria-selected="false">
-                        <i class="fa-solid fa-gear"></i> Configuración
-                    </button>
-                    <button class="nav-link" id="nav-customers-tab" data-bs-toggle="tab" data-bs-target="#nav-customers" type="button" role="tab" aria-controls="nav-customers" aria-selected="false">
-                        <i class="fa-solid fa-user-group"></i> Clientes
-                    </button>
-                    <button class="nav-link" id="nav-planes-tab" data-bs-toggle="tab" data-bs-target="#nav-planes" type="button" role="tab" aria-controls="nav-planes" aria-selected="false">
-                        <i class="fa-solid fa-layer-group"></i> Planes
-                    </button>
-                    <button class="nav-link" id="nav-rubros-tab" data-bs-toggle="tab" data-bs-target="#nav-rubros" type="button" role="tab" aria-controls="nav-rubros" aria-selected="false">
-                        <i class="fa-solid fa-tags"></i> Rubros
-                    </button>
+                    <?php if ($isClientScoped ?? false) : ?>
+                        <button class="nav-link" id="nav-webconfig-top-tab" data-bs-toggle="tab" data-bs-target="#nav-customers" type="button" role="tab" aria-controls="nav-customers" aria-selected="false">
+                            <i class="fa-solid fa-globe"></i> Configuración web
+                        </button>
+                        <button class="nav-link" id="nav-users-top-tab" data-bs-toggle="tab" data-bs-target="#nav-customers" type="button" role="tab" aria-controls="nav-customers" aria-selected="false">
+                            <i class="fa-solid fa-user-group"></i> Usuarios
+                        </button>
+                        <button class="nav-link" id="nav-customers-tab" data-bs-toggle="tab" data-bs-target="#nav-customers" type="button" role="tab" aria-controls="nav-customers" aria-selected="false">
+                            <i class="fa-solid fa-id-card"></i> Perfil
+                        </button>
+                    <?php else : ?>
+                        <button class="nav-link" id="nav-customers-tab" data-bs-toggle="tab" data-bs-target="#nav-customers" type="button" role="tab" aria-controls="nav-customers" aria-selected="false">
+                            <i class="fa-solid fa-user-group"></i> Clientes
+                        </button>
+                    <?php endif; ?>
+                    <?php if (!($isClientScoped ?? false)) : ?>
+                        <button class="nav-link" id="nav-config-tab" data-bs-toggle="tab" data-bs-target="#nav-config" type="button" role="tab" aria-controls="nav-config" aria-selected="false">
+                            <i class="fa-solid fa-gear"></i> Configuración
+                        </button>
+                        <button class="nav-link" id="nav-planes-tab" data-bs-toggle="tab" data-bs-target="#nav-planes" type="button" role="tab" aria-controls="nav-planes" aria-selected="false">
+                            <i class="fa-solid fa-layer-group"></i> Planes
+                        </button>
+                        <button class="nav-link" id="nav-rubros-tab" data-bs-toggle="tab" data-bs-target="#nav-rubros" type="button" role="tab" aria-controls="nav-rubros" aria-selected="false">
+                            <i class="fa-solid fa-tags"></i> Rubros
+                        </button>
+                    <?php endif; ?>
                 </div>
             </nav>
 
             <div class="tab-content" id="nav-tabContent">
                 <div class="tab-pane fade show active" id="nav-overview" role="tabpanel" aria-labelledby="nav-overview-tab" tabindex="0">
-                    <?= view('superadmin/tabOverview', ['superadminStats' => $superadminStats ?? []]) ?>
-                </div>
-                <div class="tab-pane fade" id="nav-config" role="tabpanel" aria-labelledby="nav-config-tab" tabindex="0">
-                    <?= view('superadmin/tabConfig', [
-                        'bookingEmail' => $bookingEmail ?? '',
-                        'clientes' => $clientes ?? [],
-                    ]) ?>
+                    <?php if ($isClientScoped ?? false) : ?>
+                        <?= view('superadmin/tabOverviewClient', ['superadminStats' => $superadminStats ?? []]) ?>
+                    <?php else : ?>
+                        <?= view('superadmin/tabOverview', ['superadminStats' => $superadminStats ?? []]) ?>
+                    <?php endif; ?>
                 </div>
                 <div class="tab-pane fade" id="nav-customers" role="tabpanel" aria-labelledby="nav-customers-tab" tabindex="0">
-                    <?= view('superadmin/tabCustomers', ['clientes' => $clientes ?? [], 'rubros' => $rubros ?? [], 'nextClienteCodigo' => $nextClienteCodigo ?? '112010001']) ?>
+                    <?php if ($isClientScoped ?? false) : ?>
+                        <?= view('superadmin/tabClientProfileV2', [
+                            'clientProfile' => $clientProfile ?? null,
+                            'clientUsers' => $clientUsers ?? [],
+                            'currentPlan' => $currentPlan ?? null,
+                            'planes' => $clientPlanOptions ?? [],
+                            'clientAccessUser' => $clientAccessUser ?? null,
+                        ]) ?>
+                    <?php else : ?>
+                        <?= view('superadmin/tabCustomers', [
+                            'clientes' => $clientes ?? [],
+                            'rubros' => $rubros ?? [],
+                            'planes' => $planes ?? [],
+                            'nextClienteCodigo' => $nextClienteCodigo ?? '112010001',
+                            'isClientScoped' => $isClientScoped ?? false,
+                        ]) ?>
+                    <?php endif; ?>
                 </div>
-                <div class="tab-pane fade" id="nav-planes" role="tabpanel" aria-labelledby="nav-planes-tab" tabindex="0">
-                    <?= view('superadmin/tabPlanes', ['planes' => $planes ?? []]) ?>
-                </div>
-                <div class="tab-pane fade" id="nav-rubros" role="tabpanel" aria-labelledby="nav-rubros-tab" tabindex="0">
-                    <?= view('superadmin/tabRubrosV2', ['rubros' => $rubros ?? [], 'rubroParametros' => $rubroParametros ?? []]) ?>
-                </div>
+                <?php if (!($isClientScoped ?? false)) : ?>
+                    <div class="tab-pane fade" id="nav-config" role="tabpanel" aria-labelledby="nav-config-tab" tabindex="0">
+                        <?= view('superadmin/tabConfig', [
+                            'bookingEmail' => $bookingEmail ?? '',
+                            'users' => $users ?? [],
+                        ]) ?>
+                    </div>
+                    <div class="tab-pane fade" id="nav-planes" role="tabpanel" aria-labelledby="nav-planes-tab" tabindex="0">
+                        <?= view('superadmin/tabPlanes', ['planes' => $planes ?? []]) ?>
+                    </div>
+                    <div class="tab-pane fade" id="nav-rubros" role="tabpanel" aria-labelledby="nav-rubros-tab" tabindex="0">
+                        <?= view('superadmin/tabRubrosV2', ['rubros' => $rubros ?? [], 'rubroParametros' => $rubroParametros ?? []]) ?>
+                    </div>
+                <?php endif; ?>
             </div>
         </div>
     </div>
@@ -123,7 +159,50 @@
 <?php echo $this->endSection() ?>
 
 <?php echo $this->section('scripts') ?>
-<script src="<?= base_url(PUBLIC_FOLDER . "assets/js/superadminConfig.js?v=" . time()) ?>"></script>
-<script src="<?= base_url(PUBLIC_FOLDER . "assets/js/superadminMasterData.js?v=" . time()) ?>"></script>
+<?php if (!($isClientScoped ?? false)) : ?>
+    <script src="<?= base_url(PUBLIC_FOLDER . "assets/js/superadminConfig.js?v=" . time()) ?>"></script>
+    <script src="<?= base_url(PUBLIC_FOLDER . "assets/js/superadminMasterData.js?v=" . time()) ?>"></script>
+<?php endif; ?>
 <script src="<?= base_url(PUBLIC_FOLDER . "assets/js/superadminClientes.js?v=" . time()) ?>"></script>
+<?php if ($isClientScoped ?? false) : ?>
+    <script src="<?= base_url(PUBLIC_FOLDER . "assets/js/superadminClientProfile.js?v=" . time()) ?>"></script>
+    <script>
+        function toggleClientScopedBlocks(showUsers) {
+            var generalBlock = document.getElementById('cp_general_block');
+            var usersBlock = document.getElementById('cp_users_block');
+            var webConfigBlock = document.getElementById('cp_web_config_block');
+            if (!generalBlock || !usersBlock || !webConfigBlock) return;
+            generalBlock.style.display = '';
+            usersBlock.style.display = '';
+            webConfigBlock.style.display = '';
+            generalBlock.style.display = showUsers === 'profile' ? '' : 'none';
+            usersBlock.style.display = showUsers === 'users' ? '' : 'none';
+            webConfigBlock.style.display = showUsers === 'webconfig' ? '' : 'none';
+        }
+
+        document.addEventListener('click', function (e) {
+            var btn = e.target ? e.target.closest('button') : null;
+            if (!btn) return;
+            if (btn.id === 'nav-webconfig-top-tab') {
+                setTimeout(function () {
+                    toggleClientScopedBlocks('webconfig');
+                }, 0);
+            }
+            if (btn.id === 'nav-users-top-tab') {
+                setTimeout(function () {
+                    toggleClientScopedBlocks('users');
+                }, 0);
+            }
+            if (btn.id === 'nav-customers-tab') {
+                setTimeout(function () {
+                    toggleClientScopedBlocks('profile');
+                }, 0);
+            }
+        });
+
+        document.addEventListener('DOMContentLoaded', function () {
+            toggleClientScopedBlocks('profile');
+        });
+    </script>
+<?php endif; ?>
 <?php echo $this->endSection() ?>

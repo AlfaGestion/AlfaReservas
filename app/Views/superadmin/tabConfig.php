@@ -7,6 +7,9 @@
             <li class="nav-item" role="presentation">
                 <button class="nav-link" id="config-general-tab" data-bs-toggle="tab" data-bs-target="#config-general" type="button" role="tab">General</button>
             </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="config-users-tab" data-bs-toggle="tab" data-bs-target="#config-users" type="button" role="tab">Usuarios</button>
+            </li>
         </ul>
 
         <div class="tab-content pt-3">
@@ -22,64 +25,82 @@
                     <label for="bookingEmailConfig">Email para enviar reservas</label>
                 </div>
                 <button type="button" class="btn btn-success" id="saveConfigGeneral">Guardar configuracion</button>
+            </div>
 
-                <hr class="my-4">
-
-                <h6 class="mb-3">Estados por cliente</h6>
-                <div class="row g-2 mb-2">
-                    <div class="col-md-6">
-                        <label for="estadoConfigClienteCodigo" class="form-label">Cliente</label>
-                        <select class="form-select" id="estadoConfigClienteCodigo">
-                            <option value="">Seleccionar cliente</option>
-                            <?php foreach (($clientes ?? []) as $cliente) : ?>
-                                <option value="<?= esc((string) ($cliente['codigo'] ?? '')) ?>">
-                                    <?= esc((string) (($cliente['codigo'] ?? '') . ' - ' . ($cliente['razon_social'] ?? ''))) ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
+            <div class="tab-pane fade" id="config-users" role="tabpanel" aria-labelledby="config-users-tab">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div class="text-muted">Usuarios disponibles para administración.</div>
+                    <button type="button" class="btn btn-success" id="openNewUserModalBtn" data-bs-toggle="modal" data-bs-target="#newUserModal">
+                        <i class="fa-solid fa-user-plus me-1"></i> Nuevo usuario
+                    </button>
                 </div>
 
-                <div id="estadoConfigForm" class="d-none">
-                    <div class="row g-2">
-                        <div class="col-md-4">
-                            <label class="form-label" for="cfg_trial_days">Dias en prueba</label>
-                            <input type="number" class="form-control" id="cfg_trial_days" min="1" max="365" value="15">
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label" for="cfg_grace_days">Dias en gracia</label>
-                            <input type="number" class="form-control" id="cfg_grace_days" min="0" max="60" value="5">
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label" for="cfg_read_only_days">Dias solo lectura</label>
-                            <input type="number" class="form-control" id="cfg_read_only_days" min="0" max="60" value="10">
-                        </div>
-                    </div>
+                <div class="table-responsive">
+                    <table class="table table-striped align-middle">
+                        <thead>
+                            <tr>
+                                <th>Usuario</th>
+                                <th>Nombre</th>
+                                <th>Email</th>
+                                <th>Perfil</th>
+                                <th>Estado</th>
+                            </tr>
+                        </thead>
+                        <tbody id="usersTableBody">
+                            <?php if (!empty($users ?? [])) : ?>
+                                <?php foreach (($users ?? []) as $u) : ?>
+                                    <tr>
+                                        <td><?= esc((string) ($u['user'] ?? '-')) ?></td>
+                                        <td><?= esc((string) ($u['name'] ?? '-')) ?></td>
+                                        <td><?= esc((string) ($u['email'] ?? '-')) ?></td>
+                                        <td><?= ((int) ($u['superadmin'] ?? 0) === 1) ? 'Superadmin' : 'Admin' ?></td>
+                                        <td><?= ((int) ($u['active'] ?? 0) === 1) ? 'Activo' : 'Inactivo' ?></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            <?php else : ?>
+                                <tr>
+                                    <td colspan="5" class="text-center text-muted">No hay usuarios para mostrar.</td>
+                                </tr>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
 
-                    <div class="mt-3">
-                        <label class="form-label" for="cfg_msg_trial">Texto en prueba</label>
-                        <textarea class="form-control" id="cfg_msg_trial" rows="2"></textarea>
-                    </div>
-                    <div class="mt-2">
-                        <label class="form-label" for="cfg_msg_grace">Texto en periodo de gracia</label>
-                        <textarea class="form-control" id="cfg_msg_grace" rows="2"></textarea>
-                    </div>
-                    <div class="mt-2">
-                        <label class="form-label" for="cfg_msg_read_only">Texto en solo lectura</label>
-                        <textarea class="form-control" id="cfg_msg_read_only" rows="2"></textarea>
-                    </div>
-                    <div class="mt-2">
-                        <label class="form-label" for="cfg_msg_suspended">Texto en suspendido</label>
-                        <textarea class="form-control" id="cfg_msg_suspended" rows="2"></textarea>
-                    </div>
-
-                    <div class="small text-muted mt-2">
-                        Placeholders disponibles: &lt;cliente&gt;, &lt;codigo&gt;, &lt;estado&gt;, &lt;plan&gt;, &lt;periodo&gt;, &lt;dias_restantes&gt;, &lt;fecha_fin&gt;, &lt;fecha_hoy&gt;.
-                    </div>
-
-                    <div class="mt-3">
-                        <button type="button" class="btn btn-outline-secondary" id="resetClienteEstadoConfig">Restaurar defaults</button>
-                        <button type="button" class="btn btn-success" id="saveClienteEstadoConfig">Guardar estados del cliente</button>
+                <div class="modal fade" id="newUserModal" tabindex="-1" aria-labelledby="newUserModalLabel" aria-hidden="true">
+                    <div class="modal-dialog">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title" id="newUserModalLabel">Nuevo usuario</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                            </div>
+                            <div class="modal-body">
+                                <form id="newUserForm">
+                                    <div class="mb-3">
+                                        <label for="newUserUser" class="form-label">Usuario</label>
+                                        <input type="text" class="form-control" id="newUserUser" required>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="newUserEmail" class="form-label">Email</label>
+                                        <input type="email" class="form-control" id="newUserEmail" required>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="newUserPassword" class="form-label">Contrasena</label>
+                                        <input type="password" class="form-control" id="newUserPassword" required>
+                                    </div>
+                                    <div class="mb-0">
+                                        <label for="newUserRepeatPassword" class="form-label">Repetir contrasena</label>
+                                        <input type="password" class="form-control" id="newUserRepeatPassword" required>
+                                    </div>
+                                    <div class="form-text mt-2">Debe incluir al menos: 1 mayuscula, 1 minuscula y 1 numero.</div>
+                                </form>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                                <button type="button" class="btn btn-success" id="saveNewUserBtn">
+                                    <i class="fa-solid fa-floppy-disk me-1"></i> Guardar usuario
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

@@ -22,19 +22,49 @@
 
 <body>
     <?php echo $this->renderSection('navbar') ?>
+    <?php
+        $tenantLogoUrl = trim((string) (session()->get('tenant_logo_url') ?? ''));
+        if ($tenantLogoUrl === '') {
+            $cuentaCode = trim((string) (session()->get('cuenta') ?? ''));
+            if ($cuentaCode !== '' && preg_match('/^[A-Za-z0-9_]+$/', $cuentaCode) === 1) {
+                $paths = [
+                    rtrim(FCPATH, '/\\') . DIRECTORY_SEPARATOR . $cuentaCode . DIRECTORY_SEPARATOR,
+                    rtrim(FCPATH, '/\\') . DIRECTORY_SEPARATOR . 'assets' . DIRECTORY_SEPARATOR . 'tenants' . DIRECTORY_SEPARATOR . $cuentaCode . DIRECTORY_SEPARATOR,
+                ];
+                foreach ($paths as $p) {
+                    if (!is_dir($p)) {
+                        continue;
+                    }
+                    $matches = glob($p . '{logo,LOGO}.*', GLOB_BRACE) ?: [];
+                    foreach ($matches as $m) {
+                        if (!is_file($m)) {
+                            continue;
+                        }
+                        $ext = strtolower((string) pathinfo($m, PATHINFO_EXTENSION));
+                        if (!in_array($ext, ['png', 'jpg', 'jpeg', 'webp'], true)) {
+                            continue;
+                        }
+                        $tenantLogoUrl = base_url(str_replace('\\', '/', trim(str_replace(rtrim(FCPATH, '/\\'), '', $m), '/\\'))) . '?v=' . (@filemtime($m) ?: time());
+                        break 2;
+                    }
+                }
+            }
+        }
+        $navbarLogo = $tenantLogoUrl !== '' ? $tenantLogoUrl : base_url('alfa.png');
+    ?>
     <nav class="navbar navbar-expand-lg" style="background-color: #ffffff;">
         <div class="container-fluid d-flex justify-content-center align-items-center flex-row">
             <div class="d-flex justify-content-center align-items-center flex-row">
                 
                 <div class="mx-auto d-lg-none"> <!-- Centra en dispositivos moviles -->
                     <a class="navbar-brand" href="<?= base_url() ?>">
-                        <img src="<?= base_url('alfa.png') ?>" width="84" alt="Alfa">
+                        <img src="<?= esc($navbarLogo) ?>" width="84" alt="Logo">
                     </a>
                 </div>
 
                 <div class="mx-auto d-none d-lg-block"> <!-- Centra en pantalla grande -->
                     <a class="navbar-brand" href="<?= base_url() ?>">
-                        <img src="<?= base_url('alfa.png') ?>" width="110" alt="Alfa">
+                        <img src="<?= esc($navbarLogo) ?>" width="110" alt="Logo">
                     </a>
                 </div>
 
@@ -56,8 +86,9 @@
         <footer class="my-4" style="background-color: #5a5a5a;">
             <?php if (session()->logueado) : ?>
                 <ul class="nav justify-content-center border-bottom pb-3 mb-3">
+                    <?php $panelPath = trim((string) (session()->get('admin_panel_path') ?? '/abmAdmin')); ?>
                     <li class="nav-item"><a href="<?= base_url('auth/logOut') ?>" class="nav-link px-2 text-muted">Cerrar sesiÃ³n</a></li>
-                    <li class="nav-item"><a href="<?= base_url('abmAdmin') ?>" class="nav-link px-2 text-muted">Panel</a></li>
+                    <li class="nav-item"><a href="<?= base_url(ltrim($panelPath, '/')) ?>" class="nav-link px-2 text-muted">Panel</a></li>
                 </ul>
             <?php else : ?>
                 <ul class="nav justify-content-center border-bottom pb-3 mb-3">

@@ -15,9 +15,52 @@ use App\Models\PaymentsModel;
 use App\Models\TimeModel;
 use App\Models\UsersModel;
 use CodeIgniter\I18n\Time;
+use Config\Database;
 
 class Bookings extends BaseController
 {
+    private function tenantUserTableName(): ?string
+    {
+        try {
+            $db = Database::connect();
+            if ($db->tableExists('users')) {
+                return 'users';
+            }
+            if ($db->tableExists('user')) {
+                return 'user';
+            }
+        } catch (\Throwable $e) {
+            return null;
+        }
+        return null;
+    }
+
+    private function tenantUserNamesMap(): array
+    {
+        $table = $this->tenantUserTableName();
+        if ($table === null) {
+            return [];
+        }
+
+        try {
+            $db = Database::connect();
+            $rows = $db->table($table)->select('id, user, name')->get()->getResultArray();
+            $map = [];
+            foreach ($rows as $row) {
+                $id = (int) ($row['id'] ?? 0);
+                if ($id <= 0) {
+                    continue;
+                }
+                $map[$id] = trim((string) ($row['name'] ?? '')) !== ''
+                    ? (string) $row['name']
+                    : (string) ($row['user'] ?? 'No informado');
+            }
+            return $map;
+        } catch (\Throwable $e) {
+            return [];
+        }
+    }
+
     private function guardTenantWriteAccess()
     {
         if ((int) (session()->get('tenant_active') ?? 0) !== 1) {
@@ -411,6 +454,7 @@ class Bookings extends BaseController
         $paymentsModel = new PaymentsModel();
         $bookingsModel = new BookingsModel();
         $data = $this->request->getJSON();
+        $tenantUsersTable = $this->tenantUserTableName();
 
         // 1. Limpieza básica de filtros
         $user = (empty($data->user) || $data->user == '') ? 'all' : $data->user;
@@ -432,11 +476,14 @@ class Bookings extends BaseController
             bookings.total as booking_total,
             bookings.total_payment as booking_total_payment
         ')
-            ->join('users', 'users.id = payments.id_user', 'left')
             ->join('customers', 'customers.id = payments.id_customer', 'left')
             ->join('bookings', 'bookings.id = payments.id_booking', 'left')
             ->where('payments.date >=', $data->fechaDesde)
             ->where('payments.date <=', $data->fechaHasta);
+
+        if ($tenantUsersTable !== null) {
+            $query->join($tenantUsersTable . ' users', 'users.id = payments.id_user', 'left');
+        }
 
         if ($user !== 'all') {
             $query->where('payments.id_user', $user);
@@ -876,6 +923,7 @@ class Bookings extends BaseController
         $customersModel = new CustomersModel();
         $bookingsModel = new BookingsModel();
         $pdfLibrary = new PrintBookings();
+        $tenantUsersById = $this->tenantUserNamesMap();
 
         $query = $paymentsModel->select('
             payments.*,
@@ -904,7 +952,7 @@ class Bookings extends BaseController
             $pago = [
                 'fecha' => date("d/m/Y", strtotime($payment['date'])),
                 'pago' => $monto,
-                'usuario' => $usersModel->getUserName($payment['id_user']) || 'No informado',
+                'usuario' => $tenantUsersById[(int) ($payment['id_user'] ?? 0)] ?? ($usersModel->getUserName($payment['id_user']) ?: 'No informado'),
                 'idUsuario' => $payment['id_user'],
                 'cliente' => $customersModel->getCustomerName($payment['id_customer']),
                 'telefonoCliente' => $customersModel->getCustomerPhone($payment['id_customer']),

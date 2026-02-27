@@ -20,6 +20,7 @@ defined('PUBLIC_FOLDER') || define(
         ? ''
         : 'public/'
 );
+defined('APP_DATE_FORMAT') || define('APP_DATE_FORMAT', 'd/m/Y');
 
 /*
  | --------------------------------------------------------------------------

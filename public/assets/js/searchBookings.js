@@ -133,6 +133,8 @@ async function getAnnulledBookings(data) {
 
 async function fillTableBookings(data) {
     const divBookings = document.querySelector('.divBookings')
+    if (!divBookings) return
+    const rows = Array.isArray(data) ? data : []
 
     let existPending = false
     let stateMP = ''
@@ -145,7 +147,7 @@ async function fillTableBookings(data) {
     const pendientes = []
     const finalizadas = []
 
-    data.forEach(reserva => {
+    rows.forEach(reserva => {
         if (reserva.anulada == 0 && reserva.pago_total === 'Si') {
             finalizadas.push(reserva)
         } else {
@@ -156,6 +158,9 @@ async function fillTableBookings(data) {
     const ordered = pendientes.concat(finalizadas)
 
     ordered.forEach(reserva => {
+        actions = ''
+        edit = ''
+        anular = ''
 
         if (reserva.mp == 0) {
             if (existPending == false) {
@@ -275,6 +280,14 @@ async function fillTableBookings(data) {
         </tr>
     `
     });
+
+    if (ordered.length === 0) {
+        divBookings.innerHTML = `
+        <tr>
+            <td colspan="15" class="text-center text-muted">Sin reservas para el rango seleccionado.</td>
+        </tr>`
+        return
+    }
 
     divBookings.innerHTML = tr
 }

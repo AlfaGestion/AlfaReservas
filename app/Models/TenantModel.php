@@ -23,10 +23,6 @@ abstract class TenantModel extends Model
             return false;
         }
 
-        if ((int) ($session->get('logueado') ?? 0) === 1) {
-            return false;
-        }
-
         if ((int) ($session->get('tenant_active') ?? 0) !== 1) {
             return false;
         }

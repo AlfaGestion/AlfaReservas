@@ -7,11 +7,18 @@
     <link rel="icon" href="<?= base_url('alfa.png') ?>" type="image/png">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="<?= base_url(PUBLIC_FOLDER . "assets/css/theme.css") ?>">
+    <style>
+        body.pedidos-admin-login { background:#f2f6fb; color:#16324a; }
+        body.theme-dark.pedidos-admin-login { background:#0b2236; color:#e8f3ff; }
+        body.theme-dark.pedidos-admin-login .card { background:#16314a; border-color:#3a5f80; color:#e8f3ff; }
+        body.theme-dark.pedidos-admin-login .form-control { background:#10253a; border-color:#3a5f80; color:#e8f3ff; }
+        body.theme-dark.pedidos-admin-login .text-muted { color:#b5d2ec !important; }
+    </style>
 </head>
-<body class="bg-light">
+<body class="pedidos-admin-login">
     <div class="container py-5">
         <div class="d-flex justify-content-center mb-3">
-            <img src="<?= base_url('alfa.png') ?>" alt="Alfa" style="height: 48px;">
+            <img src="<?= esc((string) (($branding['logo'] ?? '') !== '' ? $branding['logo'] : base_url('alfa.png'))) ?>" alt="Logo" style="height: 48px;">
         </div>
         <div class="row justify-content-center">
             <div class="col-md-5">
@@ -34,7 +41,7 @@
                             </div>
                         <?php endif; ?>
 
-                        <form method="POST" action="<?= base_url('pedidos/' . ($cliente['codigo'] ?? '') . '/admin/login') ?>">
+                        <form method="POST" action="<?= base_url(ltrim((string) ($adminBasePath ?? ('pedidos/' . ($cliente['codigo'] ?? '') . '/admin')), '/')) . '/login' ?>">
                             <div class="mb-3">
                                 <label for="usuario" class="form-label">Usuario o email</label>
                                 <input type="text" class="form-control" id="usuario" name="usuario" required>
@@ -44,7 +51,7 @@
                                 <input type="password" class="form-control" id="password" name="password" required>
                             </div>
                             <div class="d-flex justify-content-between">
-                                <a href="<?= base_url('pedidos/' . ($cliente['codigo'] ?? '')) ?>" class="btn btn-outline-secondary">Volver</a>
+                                <a href="<?= base_url(ltrim((string) ($publicBasePath ?? ('pedidos/' . ($cliente['codigo'] ?? ''))), '/')) ?>" class="btn btn-outline-secondary">Volver</a>
                                 <button type="submit" class="btn btn-primary">Ingresar</button>
                             </div>
                         </form>

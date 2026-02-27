@@ -365,16 +365,7 @@ class Tenant
             return null;
         }
 
-        $dbAlfa = Database::connect('alfareserva');
-        $cliente = $this->baseClienteBuilder()
-            ->where('c.base', $slug)
-            ->get()
-            ->getRowArray();
-
-        if ($cliente) {
-            return $this->applyEstadoRules($cliente);
-        }
-
+        // Prioriza siempre el slug configurado en link publico.
         $candidatos = $this->baseClienteBuilder()
             ->where('c.link IS NOT NULL', null, false)
             ->get()
@@ -384,6 +375,20 @@ class Tenant
             if ($this->extractSlugFromLink((string) ($candidato['link'] ?? '')) === $slug) {
                 return $this->applyEstadoRules($candidato);
             }
+        }
+
+        // Fallback por base solo para clientes sin link configurado.
+        $cliente = $this->baseClienteBuilder()
+            ->groupStart()
+                ->where('c.link IS NULL', null, false)
+                ->orWhere('TRIM(c.link) =', '', false)
+            ->groupEnd()
+            ->where('c.base', $slug)
+            ->get()
+            ->getRowArray();
+
+        if ($cliente) {
+            return $this->applyEstadoRules($cliente);
         }
 
         return null;

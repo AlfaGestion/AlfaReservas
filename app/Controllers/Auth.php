@@ -3,6 +3,7 @@
 namespace App\Controllers;
 
 use App\Models\UsersModel;
+use Config\Database;
 
 class Auth extends BaseController
 {
@@ -47,6 +48,11 @@ class Auth extends BaseController
         return $sessionEmail !== '' && $sessionEmail === $this->masterAdminEmail();
     }
 
+    private function isValidPasswordComplexity(string $password): bool
+    {
+        return preg_match('/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$/', $password) === 1;
+    }
+
     private function blockIfCannotManageUsers()
     {
         if ($this->canManageUsers()) {
@@ -57,7 +63,106 @@ class Auth extends BaseController
             return redirect()->to('auth/login')->with('msg', ['type' => 'danger', 'body' => 'Debe iniciar sesion para acceder.']);
         }
 
-        return redirect()->to('abmAdmin')->with('msg', ['type' => 'danger', 'body' => 'Solo el admin maestro puede crear usuarios.']);
+        return redirect()->to('abmRubros')->with('msg', ['type' => 'danger', 'body' => 'Solo el admin maestro puede crear usuarios.']);
+    }
+
+    private function resolveClienteAdminPath(array $userData): ?string
+    {
+        $sessionEmail = strtolower(trim((string) ($userData['email'] ?? '')));
+        $cuenta = trim((string) ($userData['cuenta'] ?? ''));
+        $isMasterAdmin = ((int) ($userData['superadmin'] ?? 0) === 1) && $sessionEmail === $this->masterAdminEmail();
+        if ($isMasterAdmin || strtolower($cuenta) === 'alfa') {
+            return null;
+        }
+
+        $db = Database::connect('alfareserva');
+        if (!$db->tableExists('clientes')) {
+            return null;
+        }
+
+        $builder = $db->table('clientes')->select('link');
+        if ($cuenta !== '') {
+            $builder->groupStart()
+                ->where('codigo', $cuenta)
+                ->orWhere('base', $cuenta)
+                ->groupEnd();
+        }
+        if ($sessionEmail !== '') {
+            if ($cuenta !== '') {
+                $builder->orWhere('email', $sessionEmail);
+            } else {
+                $builder->where('email', $sessionEmail);
+            }
+        }
+
+        $cliente = $builder->orderBy('id', 'DESC')->get()->getRowArray();
+        $link = trim((string) ($cliente['link'] ?? ''));
+        if ($link === '') {
+            return null;
+        }
+
+        $path = '/' . ltrim($link, '/');
+        return $this->sanitizeRedirectPath($path . '/admin');
+    }
+
+    private function resolveClienteForUser(array $userData): ?array
+    {
+        $tenant = \Config\Services::tenant();
+        $sessionEmail = strtolower(trim((string) ($userData['email'] ?? '')));
+        $cuenta = trim((string) ($userData['cuenta'] ?? ''));
+
+        if (preg_match('/^[0-9]{9}$/', $cuenta) === 1) {
+            $byCode = $tenant->resolveByCodigo($cuenta);
+            if (is_array($byCode)) {
+                return $byCode;
+            }
+        }
+
+        if ($cuenta !== '') {
+            $bySlug = $tenant->resolveBySlug($cuenta);
+            if (is_array($bySlug)) {
+                return $bySlug;
+            }
+        }
+
+        if ($sessionEmail !== '') {
+            $db = Database::connect('alfareserva');
+            if ($db->tableExists('clientes')) {
+                $row = $db->table('clientes')
+                    ->select('codigo')
+                    ->where('LOWER(email)', $sessionEmail)
+                    ->orderBy('id', 'DESC')
+                    ->get()
+                    ->getRowArray();
+                $codigo = trim((string) ($row['codigo'] ?? ''));
+                if ($codigo !== '') {
+                    $byCode = $tenant->resolveByCodigo($codigo);
+                    if (is_array($byCode)) {
+                        return $byCode;
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private function activateTenantForUser(array $userData): void
+    {
+        $tenant = \Config\Services::tenant();
+        $tenant->clear();
+
+        $sessionEmail = strtolower(trim((string) ($userData['email'] ?? '')));
+        $cuenta = strtolower(trim((string) ($userData['cuenta'] ?? '')));
+        $isMasterAdmin = ((int) ($userData['superadmin'] ?? 0) === 1) && $sessionEmail === $this->masterAdminEmail();
+        if ($isMasterAdmin || $cuenta === 'alfa') {
+            return;
+        }
+
+        $cliente = $this->resolveClienteForUser($userData);
+        if (is_array($cliente)) {
+            $tenant->activate($cliente);
+        }
     }
 
     public function index()
@@ -68,7 +173,8 @@ class Auth extends BaseController
             if ($redirectPath) {
                 return redirect()->to($redirectPath);
             }
-            return redirect()->to('/abmAdmin');
+            $panelPath = $this->sanitizeRedirectPath((string) session()->get('admin_panel_path'));
+            return redirect()->to($panelPath ?: '/abmRubros');
         }
 
         return view('auth/login', ['redirectPath' => $redirectPath]);
@@ -94,8 +200,6 @@ class Auth extends BaseController
             ->first();
 
         if (isset($userData) && (int) ($userData['active'] ?? 0) === 1 && password_verify($password, $userData['password'])) {
-            \Config\Services::tenant()->clear();
-
             $sessionData = [
                 'id_user'    => $userData['id'],
                 'user'       => $userData['user'],
@@ -108,11 +212,18 @@ class Auth extends BaseController
             ];
 
             session()->set($sessionData);
+            $this->activateTenantForUser($userData);
 
             if ($redirectPath) {
                 return redirect()->to($redirectPath);
             }
-            return redirect()->to('/abmAdmin');
+            $clienteAdminPath = $this->resolveClienteAdminPath($userData);
+            if ($clienteAdminPath) {
+                session()->set('admin_panel_path', $clienteAdminPath);
+                return redirect()->to($clienteAdminPath);
+            }
+            session()->set('admin_panel_path', '/abmRubros');
+            return redirect()->to('/abmRubros');
         }
 
         $loginPath = '/auth/login';
@@ -164,6 +275,9 @@ class Auth extends BaseController
 
         if ($usuario === '' || $email === '' || $password === '') {
             return redirect()->to('auth/register')->with('msg', ['type' => 'danger', 'body' => 'Debe completar todos los datos']);
+        }
+        if (!$this->isValidPasswordComplexity((string) $password)) {
+            return redirect()->to('auth/register')->with('msg', ['type' => 'danger', 'body' => 'La contrasena debe tener al menos una mayuscula, una minuscula y un numero']);
         }
 
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {

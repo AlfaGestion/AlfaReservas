@@ -7,6 +7,11 @@ use App\Models\UsersModel;
 
 class Users extends BaseController
 {
+    private function isValidPasswordComplexity(string $password): bool
+    {
+        return preg_match('/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$/', $password) === 1;
+    }
+
     public function index()
     {
         //
@@ -31,6 +36,13 @@ class Users extends BaseController
         $modelUsers = new UsersModel();
         $data = $this->request->getJSON();
         $password = $data->password;
+
+        if (!is_string($password) || trim($password) === '') {
+            return $this->response->setJSON($this->setResponse(400, true, null, 'Debe ingresar una contrasena.'));
+        }
+        if (!$this->isValidPasswordComplexity($password)) {
+            return $this->response->setJSON($this->setResponse(400, true, null, 'La contrasena debe tener al menos una mayuscula, una minuscula y un numero.'));
+        }
 
         $query = [
             'user' => $data->user,

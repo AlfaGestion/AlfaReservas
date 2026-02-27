@@ -347,17 +347,17 @@ $formatRubroLabel = static function (?string $descripcion): string {
                     <?php endif; ?>
 
                     <h3 class="h5 mb-3 text-center" style="color:#0a4f90;font-weight:700;">Darse de alta</h3>
-                    <input type="hidden" name="plan" id="plan" value="Basico">
-                    <input type="hidden" name="cantidad_servicios" id="cantidad_servicios" value="1">
-                    <input type="hidden" name="cantidad_usuarios" id="cantidad_usuarios" value="1">
+                    <input type="hidden" name="plan" id="plan" value="<?= esc(old('plan', 'Basico')) ?>">
+                    <input type="hidden" name="cantidad_servicios" id="cantidad_servicios" value="<?= esc(old('cantidad_servicios', '1')) ?>">
+                    <input type="hidden" name="cantidad_usuarios" id="cantidad_usuarios" value="<?= esc(old('cantidad_usuarios', '1')) ?>">
 
                     <div class="form-floating mb-3">
-                        <input type="text" name="name" class="form-control" id="name" placeholder="Nombre y apellido" required>
+                        <input type="text" name="name" class="form-control" id="name" placeholder="Nombre y apellido" value="<?= esc(old('name')) ?>" required>
                         <label for="name">Nombre y apellido</label>
                     </div>
 
                     <div class="form-floating mb-3">
-                        <input type="text" name="razon_social" class="form-control" id="razon_social" placeholder="Razon social" required>
+                        <input type="text" name="razon_social" class="form-control" id="razon_social" placeholder="Razon social" value="<?= esc(old('razon_social')) ?>" required>
                         <label for="razon_social">Razon social</label>
                     </div>
 
@@ -366,17 +366,17 @@ $formatRubroLabel = static function (?string $descripcion): string {
                         <div class="small text-muted mb-2" id="full_link_label">-</div>
                         <div class="input-group">
                             <span class="input-group-text">/</span>
-                            <input type="text" name="link_path" class="form-control" id="link_path" placeholder="..." autocomplete="off">
+                            <input type="text" name="link_path" class="form-control" id="link_path" placeholder="..." value="<?= esc(old('link_path')) ?>" autocomplete="off">
                         </div>
                     </div>
 
                     <div class="form-floating mb-3">
-                        <input type="text" name="dni" class="form-control" id="dni" placeholder="DNI" required>
+                        <input type="text" name="dni" class="form-control" id="dni" placeholder="DNI" value="<?= esc(old('dni')) ?>" required>
                         <label for="dni">DNI</label>
                     </div>
 
                     <div class="form-floating mb-3">
-                        <input type="text" name="city" class="form-control" id="city" placeholder="Localidad" required>
+                        <input type="text" name="city" class="form-control" id="city" placeholder="Localidad" value="<?= esc(old('city')) ?>" required>
                         <label for="city">Localidad</label>
                     </div>
 
@@ -385,13 +385,15 @@ $formatRubroLabel = static function (?string $descripcion): string {
                         <select name="id_rubro" id="id_rubro" class="form-select" required>
                             <option value="">Seleccionar rubro</option>
                             <?php foreach (($rubros ?? []) as $rubro) : ?>
-                                <option value="<?= esc($rubro['id']) ?>"><?= esc($formatRubroLabel($rubro['descripcion'] ?? null)) ?></option>
+                                <option value="<?= esc($rubro['id']) ?>" <?= (string) old('id_rubro') === (string) ($rubro['id'] ?? '') ? 'selected' : '' ?>>
+                                    <?= esc($formatRubroLabel($rubro['descripcion'] ?? null)) ?>
+                                </option>
                             <?php endforeach; ?>
                         </select>
                     </div>
 
                     <div class="form-floating mb-3">
-                        <input type="email" name="email" class="form-control" id="email" placeholder="Email" required>
+                        <input type="email" name="email" class="form-control" id="email" placeholder="Email" value="<?= esc(old('email')) ?>" required>
                         <label for="email">Email</label>
                     </div>
 
@@ -401,7 +403,7 @@ $formatRubroLabel = static function (?string $descripcion): string {
                     </div>
 
                     <div class="form-floating mb-3">
-                        <input type="text" name="phone" class="form-control" id="phone" placeholder="Telefono" required>
+                        <input type="text" name="phone" class="form-control" id="phone" placeholder="Telefono" value="<?= esc(old('phone')) ?>" required>
                         <label for="phone">Telefono</label>
                     </div>
 

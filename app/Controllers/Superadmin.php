@@ -140,21 +140,33 @@ class Superadmin extends BaseController
         }
 
         $row = $db->query(
-            "SELECT codigo FROM clientes WHERE codigo LIKE ? ORDER BY codigo DESC LIMIT 1",
+            "SELECT MAX(CAST(SUBSTRING(codigo, 6) AS UNSIGNED)) AS max_suffix
+             FROM clientes
+             WHERE codigo LIKE ?",
             [$prefix . '%']
         )->getRowArray();
 
-        if (!$row || empty($row['codigo'])) {
+        $maxSuffix = (int) ($row['max_suffix'] ?? 0);
+        if ($maxSuffix <= 0) {
             return $prefix . '0001';
         }
 
-        $codigo = (string) $row['codigo'];
-        if (preg_match('/^' . preg_quote($prefix, '/') . '(\\d{4})$/', $codigo, $matches) !== 1) {
-            return $prefix . '0001';
+        $nextNumber = $maxSuffix + 1;
+        $candidate = $prefix . str_pad((string) $nextNumber, 4, '0', STR_PAD_LEFT);
+
+        // Defensa extra ante colisiones (ej. alta simultanea)
+        $tries = 0;
+        while ($tries < 200) {
+            $exists = $db->table('clientes')->select('id')->where('codigo', $candidate)->get()->getRowArray();
+            if (!$exists) {
+                return $candidate;
+            }
+            $nextNumber++;
+            $candidate = $prefix . str_pad((string) $nextNumber, 4, '0', STR_PAD_LEFT);
+            $tries++;
         }
 
-        $nextNumber = (int) $matches[1] + 1;
-        return $prefix . str_pad((string) $nextNumber, 4, '0', STR_PAD_LEFT);
+        throw new \RuntimeException('No se pudo generar un codigo de cliente unico.');
     }
 
     private function databaseExists(string $databaseName): bool
@@ -219,6 +231,42 @@ class Superadmin extends BaseController
         );
 
         $db->query(
+            "CREATE TABLE IF NOT EXISTS `{$databaseName}`.`Pedidos` (
+                `id` INT(10) UNSIGNED NOT NULL AUTO_INCREMENT,
+                `id_cliente` INT(10) UNSIGNED NULL,
+                `nombre_cliente` VARCHAR(255) NOT NULL,
+                `direccion` VARCHAR(255) NULL,
+                `entre_calles` VARCHAR(255) NULL,
+                `ubicacion_x` DECIMAL(12,8) NULL,
+                `ubicacion_y` DECIMAL(12,8) NULL,
+                `telefono` VARCHAR(50) NULL,
+                `email` VARCHAR(150) NULL,
+                `fecha` DATETIME NOT NULL,
+                `observacion` TEXT NULL,
+                `estado` VARCHAR(30) NOT NULL DEFAULT 'pendiente',
+                `codigo_seguimiento` VARCHAR(40) NULL,
+                `fecha_recibido` DATETIME NULL,
+                PRIMARY KEY (`id`),
+                KEY `idx_pedidos_cliente` (`id_cliente`),
+                KEY `idx_pedidos_tracking` (`codigo_seguimiento`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+        );
+
+        $db->query(
+            "CREATE TABLE IF NOT EXISTS `{$databaseName}`.`Pedios_Insumos` (
+                `id` INT(10) UNSIGNED NOT NULL AUTO_INCREMENT,
+                `idpedido` INT(10) UNSIGNED NOT NULL,
+                `idArticulo` INT(10) UNSIGNED NULL,
+                `Nombre` VARCHAR(255) NULL,
+                `Descripcion` TEXT NULL,
+                `cantidad` INT(10) UNSIGNED NOT NULL DEFAULT 1,
+                `precio` DECIMAL(12,2) NOT NULL DEFAULT 0,
+                PRIMARY KEY (`id`),
+                KEY `idx_pedios_insumos_pedido` (`idpedido`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+        );
+
+        $db->query(
             "CREATE TABLE IF NOT EXISTS `{$databaseName}`.`ta_configuracion` (
                 `id` INT(10) UNSIGNED NOT NULL AUTO_INCREMENT,
                 `clave` VARCHAR(100) NOT NULL,
@@ -270,6 +318,387 @@ class Superadmin extends BaseController
         return '/' . ltrim($slug, '/');
     }
 
+    private function clienteBaseExists(string $base, ?int $excludeId = null): bool
+    {
+        $base = trim($base);
+        if ($base === '') {
+            return false;
+        }
+
+        $db = Database::connect('alfareserva');
+        $builder = $db->table('clientes')->select('id')->where('base', $base);
+        if (($excludeId ?? 0) > 0) {
+            $builder->where('id <>', (int) $excludeId);
+        }
+        return (bool) $builder->get()->getRowArray();
+    }
+
+    private function clienteLinkExists(string $link, ?int $excludeId = null): bool
+    {
+        $link = trim($link);
+        if ($link === '') {
+            return false;
+        }
+
+        $db = Database::connect('alfareserva');
+        $builder = $db->table('clientes')->select('id')->where('link', $link);
+        if (($excludeId ?? 0) > 0) {
+            $builder->where('id <>', (int) $excludeId);
+        }
+        return (bool) $builder->get()->getRowArray();
+    }
+
+    private function nextAvailableBase(string $seed, ?int $excludeId = null): string
+    {
+        $base = $this->normalizeTenantKey($seed);
+        if ($base === '') {
+            return '';
+        }
+
+        $candidate = substr($base, 0, 90);
+        $counter = 1;
+        while ($this->databaseExists($candidate) || $this->clienteBaseExists($candidate, $excludeId)) {
+            $suffix = '_' . $counter;
+            $candidate = substr($base, 0, max(1, 90 - strlen($suffix))) . $suffix;
+            $counter++;
+            if ($counter > 9999) {
+                throw new \RuntimeException('No se pudo generar una base unica para el cliente.');
+            }
+        }
+
+        return $candidate;
+    }
+
+    private function nextAvailableLinkSlug(string $seed, ?int $excludeId = null): string
+    {
+        $slug = $this->normalizeTenantKey($seed);
+        if ($slug === '') {
+            return '';
+        }
+
+        $candidate = substr($slug, 0, 90);
+        $counter = 1;
+        while ($this->clienteLinkExists($this->buildClienteLink($candidate), $excludeId)) {
+            $suffix = '_' . $counter;
+            $candidate = substr($slug, 0, max(1, 90 - strlen($suffix))) . $suffix;
+            $counter++;
+            if ($counter > 9999) {
+                throw new \RuntimeException('No se pudo generar un link unico para el cliente.');
+            }
+        }
+
+        return $candidate;
+    }
+
+    private function resolveScopedPrimaryCliente(array $allClientes, string $sessionCuenta, string $sessionEmail): ?array
+    {
+        foreach ($allClientes as $row) {
+            $code = trim((string) ($row['codigo'] ?? ''));
+            $base = trim((string) ($row['base'] ?? ''));
+            $email = strtolower(trim((string) ($row['email'] ?? '')));
+            if (
+                ($sessionCuenta !== '' && ($code === $sessionCuenta || $base === $sessionCuenta))
+                || ($sessionEmail !== '' && $email === $sessionEmail)
+            ) {
+                return $row;
+            }
+        }
+        return null;
+    }
+
+    private function scopedCurrentClienteOrNull(): ?array
+    {
+        $sessionEmail = strtolower(trim((string) session()->get('email')));
+        $sessionCuenta = trim((string) session()->get('cuenta'));
+        $allClientes = $this->getClientesRows();
+        return $this->resolveScopedPrimaryCliente($allClientes, $sessionCuenta, $sessionEmail);
+    }
+
+    private function getBookingsSummaryByBase(string $base): array
+    {
+        $summary = [
+            'total' => 0,
+            'active' => 0,
+            'annulled' => 0,
+            'upcoming' => 0,
+        ];
+
+        $base = trim($base);
+        if ($base === '' || preg_match('/^[A-Za-z0-9_-]+$/', $base) !== 1) {
+            return $summary;
+        }
+        if (!$this->databaseExists($base)) {
+            return $summary;
+        }
+
+        $db = Database::connect('alfareserva');
+        $tableExists = $db->query(
+            "SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'bookings' LIMIT 1",
+            [$base]
+        )->getRowArray();
+        if (!$tableExists) {
+            return $summary;
+        }
+
+        try {
+            $row = $db->query(
+                "SELECT
+                    COUNT(*) AS total,
+                    SUM(CASE WHEN annulled = 0 THEN 1 ELSE 0 END) AS active,
+                    SUM(CASE WHEN annulled = 1 THEN 1 ELSE 0 END) AS annulled,
+                    SUM(CASE WHEN annulled = 0 AND date >= CURDATE() THEN 1 ELSE 0 END) AS upcoming
+                FROM `{$base}`.`bookings`"
+            )->getRowArray();
+
+            if ($row) {
+                $summary['total'] = (int) ($row['total'] ?? 0);
+                $summary['active'] = (int) ($row['active'] ?? 0);
+                $summary['annulled'] = (int) ($row['annulled'] ?? 0);
+                $summary['upcoming'] = (int) ($row['upcoming'] ?? 0);
+            }
+        } catch (\Throwable $e) {
+            return $summary;
+        }
+
+        return $summary;
+    }
+
+    private function getTenantUsers(string $base): array
+    {
+        $base = trim($base);
+        if ($base === '' || preg_match('/^[A-Za-z0-9_-]+$/', $base) !== 1) {
+            return [];
+        }
+        if (!$this->databaseExists($base)) {
+            return [];
+        }
+
+        $db = Database::connect('alfareserva');
+        try {
+            $table = null;
+            $hasUser = $db->query(
+                "SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'user' LIMIT 1",
+                [$base]
+            )->getRowArray();
+            if ($hasUser) {
+                $table = 'user';
+            } else {
+                $hasUsers = $db->query(
+                    "SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'users' LIMIT 1",
+                    [$base]
+                )->getRowArray();
+                if ($hasUsers) {
+                    $table = 'users';
+                }
+            }
+
+            if ($table === null) {
+                return [];
+            }
+
+            $cols = $db->query(
+                "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?",
+                [$base, $table]
+            )->getResultArray();
+            $colNames = array_map(static fn(array $r): string => (string) ($r['COLUMN_NAME'] ?? ''), $cols);
+
+            $emailExpr = in_array('email', $colNames, true) ? 'email' : 'NULL';
+            $activeExpr = in_array('active', $colNames, true) ? 'active' : '1';
+            $nameExpr = in_array('name', $colNames, true) ? 'name' : '`user`';
+
+            return $db->query(
+                "SELECT id, `user`, {$emailExpr} AS email, {$nameExpr} AS name, {$activeExpr} AS active
+                 FROM `{$base}`.`{$table}`
+                 ORDER BY id DESC"
+            )->getResultArray();
+        } catch (\Throwable $e) {
+            return [];
+        }
+    }
+
+    private function getClientUsersQuota(array $cliente, ?string $baseOverride = null): array
+    {
+        $base = trim((string) ($baseOverride ?? ($cliente['base'] ?? '')));
+        $totalAllowed = max(0, (int) ($cliente['included_users'] ?? 0));
+        $usedActive = 0;
+
+        if ($base !== '' && preg_match('/^[A-Za-z0-9_-]+$/', $base) === 1 && $this->databaseExists($base)) {
+            try {
+                $db = Database::connect('alfareserva');
+                $row = $db->query(
+                    "SELECT COUNT(*) AS total FROM `{$base}`.`user` WHERE active = 1"
+                )->getRowArray();
+                $usedActive = (int) ($row['total'] ?? 0);
+            } catch (\Throwable $e) {
+                $usedActive = 0;
+            }
+        }
+
+        return [
+            'total' => $totalAllowed,
+            'used' => $usedActive,
+            'remaining' => max(0, $totalAllowed - $usedActive),
+        ];
+    }
+
+    private function scopedTenantBaseForAdminOps(): ?string
+    {
+        $sessionEmail = strtolower(trim((string) session()->get('email')));
+        $isMasterAdmin = ((int) session()->get('superadmin') === 1)
+            && $sessionEmail !== ''
+            && $sessionEmail === $this->masterAdminEmail();
+        if ($isMasterAdmin) {
+            return null;
+        }
+
+        $cliente = $this->scopedCurrentClienteOrNull();
+        if (!is_array($cliente)) {
+            return null;
+        }
+
+        $base = trim((string) ($cliente['base'] ?? ''));
+        if ($base === '' || preg_match('/^[A-Za-z0-9_-]+$/', $base) !== 1) {
+            return null;
+        }
+        if (!$this->databaseExists($base)) {
+            return null;
+        }
+
+        return $base;
+    }
+
+    private function getBookingsByRangeFromTenantBase(string $base, string $from, string $to, int $annulled): array
+    {
+        $db = Database::connect('alfareserva');
+
+        $hasBookings = $db->query(
+            "SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'bookings' LIMIT 1",
+            [$base]
+        )->getRowArray();
+        if (!$hasBookings) {
+            return [];
+        }
+
+        $rows = $db->query(
+            "SELECT *
+             FROM `{$base}`.`bookings`
+             WHERE `date` >= ? AND `date` <= ? AND `annulled` = ?
+             ORDER BY `time_from` ASC",
+            [$from, $to, $annulled]
+        )->getResultArray();
+
+        if (empty($rows)) {
+            return [];
+        }
+
+        $bookingIds = array_map(static fn(array $r): int => (int) ($r['id'] ?? 0), $rows);
+        $bookingIds = array_values(array_filter($bookingIds, static fn(int $v): bool => $v > 0));
+
+        $paidByBooking = [];
+        $hasPayments = $db->query(
+            "SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'payments' LIMIT 1",
+            [$base]
+        )->getRowArray();
+        if ($hasPayments && !empty($bookingIds)) {
+            $idsSql = implode(',', array_map('intval', $bookingIds));
+            $paymentsRows = $db->query(
+                "SELECT id_booking, SUM(amount) AS paid_total
+                 FROM `{$base}`.`payments`
+                 WHERE id_booking IN ({$idsSql})
+                 GROUP BY id_booking"
+            )->getResultArray();
+            foreach ($paymentsRows as $pr) {
+                $paidByBooking[(int) ($pr['id_booking'] ?? 0)] = (float) ($pr['paid_total'] ?? 0);
+            }
+        }
+
+        $fieldsById = [];
+        $hasFields = $db->query(
+            "SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'fields' LIMIT 1",
+            [$base]
+        )->getRowArray();
+        if ($hasFields) {
+            $frows = $db->query("SELECT id, name FROM `{$base}`.`fields`")->getResultArray();
+            foreach ($frows as $f) {
+                $fieldsById[(int) ($f['id'] ?? 0)] = (string) ($f['name'] ?? 'N/D');
+            }
+        }
+
+        $bookings = [];
+        foreach ($rows as $booking) {
+            $bookingId = (int) ($booking['id'] ?? 0);
+            $paymentsSum = (float) ($paidByBooking[$bookingId] ?? 0);
+            $bookingPaid = (float) ($booking['payment'] ?? 0);
+            $paid = max($paymentsSum, $bookingPaid);
+            $total = (float) ($booking['total'] ?? 0);
+            $difference = max(0, $total - $paid);
+
+            $bookings[] = [
+                'id' => $booking['id'],
+                'cancha' => $fieldsById[(int) ($booking['id_field'] ?? 0)] ?? 'N/D',
+                'fecha' => date('d/m/Y', strtotime((string) ($booking['date'] ?? ''))),
+                'horario' => (string) ($booking['time_from'] ?? '') . ' a ' . (string) ($booking['time_until'] ?? ''),
+                'nombre' => $booking['name'] ?? '',
+                'telefono' => $booking['phone'] ?? '',
+                'creado_por' => $booking['created_by_name'] ?? $booking['created_by_type'] ?? 'N/D',
+                'editado_por' => $booking['edited_by_name'] ?? null,
+                'editado_en' => $booking['edited_at'] ?? null,
+                'pago_total' => $paid >= $total ? 'Si' : 'No',
+                'total_reserva' => $booking['total'] ?? 0,
+                'diferencia' => $difference,
+                'monto_reserva' => $paid,
+                'descripcion' => $booking['description'] ?? '',
+                'metodo_pago' => $booking['payment_method'] ?? '',
+                'anulada' => $booking['annulled'] ?? 0,
+                'mp' => $booking['mp'] ?? 1,
+            ];
+        }
+
+        return $bookings;
+    }
+
+    private function resolveClientLogoUrl(string $clientCodigo): string
+    {
+        $clientCodigo = trim($clientCodigo);
+        if ($clientCodigo === '') {
+            return '';
+        }
+
+        $basePath = rtrim(FCPATH, '/\\') . DIRECTORY_SEPARATOR;
+        $logoCandidates = [
+            [
+                'dir' => $basePath . $clientCodigo . DIRECTORY_SEPARATOR,
+                'url' => base_url(PUBLIC_FOLDER . $clientCodigo . '/'),
+            ],
+            [
+                'dir' => $basePath . 'assets' . DIRECTORY_SEPARATOR . 'tenants' . DIRECTORY_SEPARATOR . $clientCodigo . DIRECTORY_SEPARATOR,
+                'url' => base_url(PUBLIC_FOLDER . 'assets/tenants/' . $clientCodigo . '/'),
+            ],
+        ];
+
+        foreach ($logoCandidates as $candidate) {
+            if (!is_dir($candidate['dir'])) {
+                continue;
+            }
+
+            $files = glob($candidate['dir'] . '{logo,LOGO}.*', GLOB_BRACE) ?: [];
+            foreach ($files as $filePath) {
+                if (!is_file($filePath)) {
+                    continue;
+                }
+                $ext = strtolower((string) pathinfo($filePath, PATHINFO_EXTENSION));
+                if (!in_array($ext, ['png', 'jpg', 'jpeg', 'webp'], true)) {
+                    continue;
+                }
+                $fileName = basename($filePath);
+                $version = @filemtime($filePath) ?: time();
+                return $candidate['url'] . $fileName . '?v=' . $version;
+            }
+        }
+
+        return '';
+    }
+
     private function getClientesRows(): array
     {
         $db = Database::connect('alfareserva');
@@ -313,6 +742,16 @@ class Superadmin extends BaseController
 
     public function index()
     {
+        $tenantBaseForModels = $this->scopedTenantBaseForAdminOps();
+        if (is_string($tenantBaseForModels) && $tenantBaseForModels !== '') {
+            session()->set([
+                'tenant_base' => $tenantBaseForModels,
+                'tenant_active' => 1,
+            ]);
+        } else {
+            \Config\Services::tenant()->clear();
+        }
+
         $bookingsModel = new BookingsModel();
         $fieldsModel = new FieldsModel();
         $rateModel = new RateModel();
@@ -408,7 +847,115 @@ class Superadmin extends BaseController
                 ->get()
                 ->getResultArray();
         }
-        $clientes = $this->getClientesRows();
+        $allClientes = $this->getClientesRows();
+        $sessionEmail = strtolower(trim((string) session()->get('email')));
+        $sessionCuenta = trim((string) session()->get('cuenta'));
+        $isMasterAdmin = ((int) session()->get('superadmin') === 1)
+            && $sessionEmail !== ''
+            && $sessionEmail === $this->masterAdminEmail();
+        $isClientScoped = !$isMasterAdmin;
+
+        $empresaNombre = '';
+        $empresaPrincipal = null;
+        $clientes = $allClientes;
+        $sucursalesResumen = [];
+        $bookingsSummary = ['total' => 0, 'active' => 0, 'annulled' => 0, 'upcoming' => 0];
+
+        if ($isClientScoped) {
+            $empresaPrincipal = $this->resolveScopedPrimaryCliente($allClientes, $sessionCuenta, $sessionEmail);
+
+            if (is_array($empresaPrincipal)) {
+                $empresaNombre = trim((string) ($empresaPrincipal['razon_social'] ?? ''));
+            }
+
+            $clientes = array_values(array_filter($allClientes, static function (array $row) use ($sessionCuenta, $sessionEmail, $empresaNombre): bool {
+                $code = trim((string) ($row['codigo'] ?? ''));
+                $base = trim((string) ($row['base'] ?? ''));
+                $email = strtolower(trim((string) ($row['email'] ?? '')));
+                $razon = strtolower(trim((string) ($row['razon_social'] ?? '')));
+                $empresaKey = strtolower(trim($empresaNombre));
+
+                if ($sessionCuenta !== '' && ($code === $sessionCuenta || $base === $sessionCuenta)) {
+                    return true;
+                }
+                if ($sessionEmail !== '' && $email === $sessionEmail) {
+                    return true;
+                }
+                if ($empresaKey !== '' && $razon === $empresaKey) {
+                    return true;
+                }
+                return false;
+            }));
+
+            if (empty($clientes) && is_array($empresaPrincipal)) {
+                $clientes = [$empresaPrincipal];
+            }
+
+            $clienteAdminPath = '';
+            if (is_array($empresaPrincipal)) {
+                $link = trim((string) ($empresaPrincipal['link'] ?? ''));
+                if ($link !== '') {
+                    $clienteAdminPath = '/' . ltrim($link, '/') . '/admin';
+                }
+            } elseif (!empty($clientes)) {
+                $link = trim((string) ($clientes[0]['link'] ?? ''));
+                if ($link !== '') {
+                    $clienteAdminPath = '/' . ltrim($link, '/') . '/admin';
+                }
+            }
+
+            if ($clienteAdminPath !== '') {
+                session()->set('admin_panel_path', $clienteAdminPath);
+                $currentPath = '/' . ltrim((string) $this->request->getUri()->getPath(), '/');
+                $normalizedCurrent = preg_replace('#^/index\.php#i', '', $currentPath);
+                $normalizedCurrent = $normalizedCurrent === '' ? '/' : $normalizedCurrent;
+                if (stripos($normalizedCurrent, '/abmAdmin') === 0 || stripos($normalizedCurrent, '/abmRubros') === 0) {
+                    return redirect()->to($clienteAdminPath);
+                }
+            }
+
+            $allowedRubros = [];
+            foreach ($clientes as $c) {
+                $rid = (int) ($c['id_rubro'] ?? 0);
+                if ($rid > 0) {
+                    $allowedRubros[$rid] = true;
+                }
+            }
+            if (!empty($allowedRubros)) {
+                $rubros = array_values(array_filter($rubros, static function (array $r) use ($allowedRubros): bool {
+                    return isset($allowedRubros[(int) ($r['id'] ?? 0)]);
+                }));
+            } else {
+                $rubros = [];
+            }
+
+            $rubroParametros = [];
+            $users = [];
+            $nextClienteCodigo = '';
+
+            foreach ($clientes as $clienteRow) {
+                $base = trim((string) ($clienteRow['base'] ?? ''));
+                $summaryBase = $this->getBookingsSummaryByBase($base);
+                $bookingsSummary['total'] += (int) ($summaryBase['total'] ?? 0);
+                $bookingsSummary['active'] += (int) ($summaryBase['active'] ?? 0);
+                $bookingsSummary['annulled'] += (int) ($summaryBase['annulled'] ?? 0);
+                $bookingsSummary['upcoming'] += (int) ($summaryBase['upcoming'] ?? 0);
+
+                $sucursalesResumen[] = [
+                    'codigo' => (string) ($clienteRow['codigo'] ?? ''),
+                    'razon_social' => (string) ($clienteRow['razon_social'] ?? ''),
+                    'base' => $base,
+                    'link' => (string) ($clienteRow['link'] ?? ''),
+                    'rubro_descripcion' => (string) ($clienteRow['rubro_descripcion'] ?? ''),
+                    'bookings_total' => (int) ($summaryBase['total'] ?? 0),
+                    'bookings_upcoming' => (int) ($summaryBase['upcoming'] ?? 0),
+                ];
+            }
+        } else {
+            session()->set('admin_panel_path', '/abmRubros');
+            $nextClienteCodigo = $this->getNextClienteCodigo();
+        }
+
         $clientesHabilitados = array_reduce($clientes, static function (int $carry, array $cliente): int {
             return $carry + (((int) ($cliente['habilitado'] ?? 0) === 1) ? 1 : 0);
         }, 0);
@@ -418,8 +965,79 @@ class Superadmin extends BaseController
             'clientes_habilitados' => $clientesHabilitados,
             'clientes_deshabilitados' => $clientesDeshabilitados,
             'rubros_total' => count($rubros),
+            'bookings_total' => (int) ($bookingsSummary['total'] ?? 0),
+            'bookings_active' => (int) ($bookingsSummary['active'] ?? 0),
+            'bookings_annulled' => (int) ($bookingsSummary['annulled'] ?? 0),
+            'bookings_upcoming' => (int) ($bookingsSummary['upcoming'] ?? 0),
+            'empresa_nombre' => $empresaNombre,
+            'empresa_cuenta' => $sessionCuenta,
+            'sucursales' => $sucursalesResumen,
         ];
-        $nextClienteCodigo = $this->getNextClienteCodigo();
+
+        $clientProfile = null;
+        $clientUsers = [];
+        $currentPlan = null;
+        $clientAccessUser = null;
+        $usersFromTenant = false;
+        if ($isClientScoped && is_array($empresaPrincipal)) {
+            $clientProfile = $empresaPrincipal;
+            $clientCodigo = trim((string) ($empresaPrincipal['codigo'] ?? ''));
+            $resolvedLogoUrl = $this->resolveClientLogoUrl($clientCodigo);
+            if ($resolvedLogoUrl !== '') {
+                $clientProfile['logo_url'] = $resolvedLogoUrl;
+                session()->set('tenant_logo_url', $resolvedLogoUrl);
+            } else {
+                session()->remove('tenant_logo_url');
+            }
+
+            $clientUsers = $this->getTenantUsers((string) ($empresaPrincipal['base'] ?? ''));
+            $users = $clientUsers;
+            $usersFromTenant = true;
+            $usersQuota = $this->getClientUsersQuota($empresaPrincipal, (string) ($empresaPrincipal['base'] ?? ''));
+
+            $periodo = strtoupper(trim((string) ($empresaPrincipal['contrato_periodo'] ?? '')));
+            $estadoCliente = strtoupper(trim((string) ($empresaPrincipal['estado'] ?? '')));
+            $trialEnd = trim((string) ($empresaPrincipal['trial_end'] ?? ''));
+            $trialDaysLeft = null;
+            if ($estadoCliente === 'TRIAL' && $trialEnd !== '') {
+                try {
+                    $today = new \DateTimeImmutable(date('Y-m-d'));
+                    $end = new \DateTimeImmutable(date('Y-m-d', strtotime($trialEnd)));
+                    $diffDays = (int) $today->diff($end)->format('%r%a');
+                    $trialDaysLeft = max(0, $diffDays);
+                } catch (\Throwable $e) {
+                    $trialDaysLeft = null;
+                }
+            }
+            $currentPlan = [
+                'plan_id' => (string) ($empresaPrincipal['plan_id'] ?? ''),
+                'nombre' => (string) ($empresaPrincipal['plan_nombre'] ?? '-'),
+                'periodo' => $periodo,
+                'periodo_human' => $periodo === 'YEAR' ? 'Anual' : ($periodo === 'MONTH' ? 'Mensual' : '-'),
+                'included_users' => (string) ($empresaPrincipal['included_users'] ?? '-'),
+                'included_resources' => (string) ($empresaPrincipal['included_resources'] ?? '-'),
+                'estado_cliente' => $estadoCliente,
+                'trial_end' => $trialEnd,
+                'trial_days_left' => $trialDaysLeft,
+                'users_quota_total' => (int) ($usersQuota['total'] ?? 0),
+                'users_quota_used' => (int) ($usersQuota['used'] ?? 0),
+                'users_quota_remaining' => (int) ($usersQuota['remaining'] ?? 0),
+            ];
+
+            $sessionUserId = (int) (session()->get('id_user') ?? 0);
+            if ($sessionUserId > 0) {
+                $sessionAccessUser = $usersModel->find($sessionUserId);
+                if (is_array($sessionAccessUser)) {
+                    $clientAccessUser = [
+                        'user' => (string) ($sessionAccessUser['user'] ?? ''),
+                        'email' => (string) ($sessionAccessUser['email'] ?? ''),
+                    ];
+                }
+            }
+        }
+        if (!$isClientScoped) {
+            session()->remove('tenant_logo_url');
+        }
         $localities = $localitiesModel->orderBy('name', 'ASC')->findAll();
         $closureText = $configModel->getValue('texto_cierre');
         if (!is_string($closureText) || trim($closureText) === '') {
@@ -431,7 +1049,15 @@ class Superadmin extends BaseController
         }
         $bookingEmail = $configModel->getValue('email_reservas');
 
-        return view('superadmin/index', [
+        $useLegacyReservasAdmin = false;
+        if ($isClientScoped && is_array($empresaPrincipal)) {
+            $rubroPrincipal = strtolower(trim((string) ($empresaPrincipal['rubro_descripcion'] ?? '')));
+            $useLegacyReservasAdmin = !in_array($rubroPrincipal, ['comida', 'pedidos'], true);
+        }
+
+        $viewName = $useLegacyReservasAdmin ? 'superadmin/index_reservas' : 'superadmin/index';
+
+        return view($viewName, [
             'bookings' => $bookings,
             'rate' => $rate,
             'customers' => $customers,
@@ -445,10 +1071,17 @@ class Superadmin extends BaseController
             'openingTime' => $openingTime,
             'fields' => $fields,
             'users' => $users,
+            'usersFromTenant' => $usersFromTenant,
             'offerRate' => $offerRate,
             'localities' => $localities,
             'closureText' => $closureText,
             'bookingEmail' => $bookingEmail,
+            'isClientScoped' => $isClientScoped,
+            'clientProfile' => $clientProfile,
+            'clientUsers' => $clientUsers,
+            'currentPlan' => $currentPlan,
+            'clientPlanOptions' => $planes,
+            'clientAccessUser' => $clientAccessUser,
         ]);
     }
 
@@ -537,12 +1170,24 @@ class Superadmin extends BaseController
 
     public function getActiveBookings()
     {
-        $this->cleanupExpiredPendingBookings();
+        try {
+            $this->cleanupExpiredPendingBookings();
+        } catch (\Throwable $e) {
+            // El cleanup no debe bloquear el listado de reservas.
+        }
+
+        $data = $this->request->getJSON();
+        $from = (string) ($data->fechaDesde ?? '');
+        $to = (string) ($data->fechaHasta ?? '');
+        $tenantBase = $this->scopedTenantBaseForAdminOps();
+        if ($tenantBase !== null) {
+            $bookings = $this->getBookingsByRangeFromTenantBase($tenantBase, $from, $to, 0);
+            return $this->response->setJSON($this->setResponse(null, null, $bookings, 'Respuesta exitosa'));
+        }
 
         $fieldsModel = new FieldsModel();
         $bookingsModel = new BookingsModel();
         $paymentsModel = new PaymentsModel();
-        $data = $this->request->getJSON();
 
         $getBookings = $bookingsModel->where('date >=', $data->fechaDesde)
             ->where('date <=', $data->fechaHasta)
@@ -609,10 +1254,18 @@ class Superadmin extends BaseController
 
     public function getAnnulledBookings()
     {
+        $data = $this->request->getJSON();
+        $from = (string) ($data->fechaDesde ?? '');
+        $to = (string) ($data->fechaHasta ?? '');
+        $tenantBase = $this->scopedTenantBaseForAdminOps();
+        if ($tenantBase !== null) {
+            $bookings = $this->getBookingsByRangeFromTenantBase($tenantBase, $from, $to, 1);
+            return $this->response->setJSON($this->setResponse(null, null, $bookings, 'Respuesta exitosa'));
+        }
+
         $fieldsModel = new FieldsModel();
         $bookingsModel = new BookingsModel();
         $paymentsModel = new PaymentsModel();
-        $data = $this->request->getJSON();
 
         $getBookings = $bookingsModel->where('date >=', $data->fechaDesde)
             ->where('date <=', $data->fechaHasta)
@@ -1143,6 +1796,114 @@ class Superadmin extends BaseController
         }
     }
 
+    private function masterAdminEmail(): string
+    {
+        return strtolower(trim((string) env('MASTER_ADMIN_EMAIL', 'marcoslromero23@gmail.com')));
+    }
+
+    private function canManageUsers(): bool
+    {
+        return (bool) session()->get('logueado');
+    }
+
+    private function isValidPasswordComplexity(string $password): bool
+    {
+        return preg_match('/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$/', $password) === 1;
+    }
+
+    private function resolveCuentaForNewUser(): string
+    {
+        if ((int) session()->get('superadmin') === 1) {
+            return 'Alfa';
+        }
+
+        $sessionCuenta = trim((string) session()->get('cuenta'));
+        if ($sessionCuenta !== '') {
+            return $sessionCuenta;
+        }
+
+        $sessionUser = trim((string) session()->get('user'));
+        return $sessionUser !== '' ? $sessionUser : 'Alfa';
+    }
+
+    private function getActiveUsersList(): array
+    {
+        $usersModel = new UsersModel();
+        $query = $usersModel
+            ->where('active', 1)
+            ->where('user !=', 'testuser')
+            ->orderBy('id', 'DESC');
+
+        $sessionEmail = strtolower(trim((string) session()->get('email')));
+        $isMaster = ((int) session()->get('superadmin') === 1) && $sessionEmail === $this->masterAdminEmail();
+        if (!$isMaster) {
+            $sessionCuenta = trim((string) session()->get('cuenta'));
+            if ($sessionCuenta !== '') {
+                $query->where('cuenta', $sessionCuenta);
+            }
+        }
+
+        return $query->findAll();
+    }
+
+    public function saveUserAjax()
+    {
+        if (!$this->canManageUsers()) {
+            return $this->response->setJSON($this->setResponse(403, true, null, 'Debe iniciar sesion para crear usuarios.'));
+        }
+
+        $usersModel = new UsersModel();
+        $usuario = trim((string) $this->request->getVar('user'));
+        $email = strtolower(trim((string) $this->request->getVar('email')));
+        $cuenta = $this->resolveCuentaForNewUser();
+        $password = (string) $this->request->getVar('password');
+        $repeatPassword = (string) $this->request->getVar('repeat_password');
+
+        if ($password !== $repeatPassword) {
+            return $this->response->setJSON($this->setResponse(400, true, null, 'Las contrasenas no coinciden.'));
+        }
+
+        if ($usuario === '' || $email === '' || $password === '') {
+            return $this->response->setJSON($this->setResponse(400, true, null, 'Debe completar usuario, email y contrasena.'));
+        }
+        if (!$this->isValidPasswordComplexity($password)) {
+            return $this->response->setJSON($this->setResponse(400, true, null, 'La contrasena debe tener al menos una mayuscula, una minuscula y un numero.'));
+        }
+
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return $this->response->setJSON($this->setResponse(400, true, null, 'El email ingresado no es valido.'));
+        }
+
+        $exists = $usersModel
+            ->groupStart()
+            ->where('email', $email)
+            ->orWhere('user', $usuario)
+            ->groupEnd()
+            ->first();
+
+        if ($exists) {
+            return $this->response->setJSON($this->setResponse(409, true, null, 'El usuario o email ya existe.'));
+        }
+
+        try {
+            $usersModel->insert([
+                'user' => $usuario,
+                'email' => $email,
+                'cuenta' => $cuenta,
+                'password' => password_hash($password, PASSWORD_DEFAULT),
+                'superadmin' => $email === $this->masterAdminEmail() ? 1 : 0,
+                'name' => $usuario,
+                'active' => 1,
+            ]);
+
+            return $this->response->setJSON(
+                $this->setResponse(null, false, ['users' => $this->getActiveUsersList()], 'Usuario creado correctamente.')
+            );
+        } catch (\Exception $e) {
+            return $this->response->setJSON($this->setResponse(500, true, null, $e->getMessage()));
+        }
+    }
+
     public function deleteUser($id)
     {
         $usersModel = new UsersModel();
@@ -1153,11 +1914,185 @@ class Superadmin extends BaseController
             return redirect()->to('abmAdmin')->with('msg', ['type' => 'danger', 'body' => 'Error al eliminar usuario: ' . $e->getMessage()]);
         }
     }
+    private function resolveClienteCuenta(string $codigo, string $base): string
+    {
+        $codigo = trim($codigo);
+        if ($codigo !== '') {
+            return $codigo;
+        }
+
+        $base = trim($base);
+        if ($base !== '') {
+            return $base;
+        }
+
+        return 'Alfa';
+    }
+
+    private function nextAvailableUsername(UsersModel $usersModel, string $seed): string
+    {
+        $base = $this->normalizeTenantKey($seed);
+        if ($base === '') {
+            $base = 'usuario';
+        }
+        $base = substr($base, 0, 40);
+
+        $candidate = $base;
+        $counter = 1;
+        while ($usersModel->where('user', $candidate)->first()) {
+            $suffix = (string) $counter;
+            $candidate = substr($base, 0, max(1, 40 - strlen($suffix))) . $suffix;
+            $counter++;
+            if ($counter > 9999) {
+                throw new \RuntimeException('No se pudo generar un nombre de usuario unico.');
+            }
+        }
+
+        return $candidate;
+    }
+
+    private function upsertClienteAccessUser(
+        string $email,
+        ?string $plainPassword,
+        string $displayName,
+        string $cuenta,
+        ?string $previousEmail = null
+    ): array {
+        $usersModel = new UsersModel();
+        $existing = $usersModel->where('email', $email)->first();
+        if (!$existing && $previousEmail && strtolower(trim($previousEmail)) !== strtolower(trim($email))) {
+            $existing = $usersModel->where('email', strtolower(trim($previousEmail)))->first();
+        }
+
+        $plainPassword = (string) ($plainPassword ?? '');
+        $shouldUpdatePassword = trim($plainPassword) !== '';
+        $hash = $shouldUpdatePassword ? password_hash($plainPassword, PASSWORD_DEFAULT) : null;
+        $name = trim($displayName) !== '' ? trim($displayName) : '';
+
+        if ($existing) {
+            $payload = [
+                'email' => $email,
+                'cuenta' => $cuenta,
+                'active' => 1,
+                'superadmin' => 0,
+            ];
+            if ($shouldUpdatePassword && $hash !== null) {
+                $payload['password'] = $hash;
+            }
+            if ($name !== '') {
+                $payload['name'] = $name;
+            }
+
+            $usersModel->update((int) $existing['id'], $payload);
+            $updated = $usersModel->find((int) $existing['id']);
+            return is_array($updated) ? $updated : array_merge($existing, $payload);
+        }
+
+        $localPart = explode('@', $email)[0] ?? 'usuario';
+        $username = $this->nextAvailableUsername($usersModel, $localPart);
+        if (!$shouldUpdatePassword || $hash === null) {
+            throw new \RuntimeException('Debe indicar una contrasena para crear el usuario del cliente.');
+        }
+        $payload = [
+            'user' => $username,
+            'email' => $email,
+            'password' => $hash,
+            'cuenta' => $cuenta,
+            'superadmin' => 0,
+            'name' => $name !== '' ? $name : $username,
+            'active' => 1,
+        ];
+
+        $usersModel->insert($payload);
+        $id = (int) $usersModel->getInsertID();
+        $inserted = $usersModel->find($id);
+        return is_array($inserted) ? $inserted : $payload;
+    }
+
+    private function upsertTenantUser(string $base, array $sourceUser, string $fallbackEmail = ''): void
+    {
+        $email = trim((string) ($sourceUser['email'] ?? $fallbackEmail));
+        $user = trim((string) ($sourceUser['user'] ?? ''));
+        $password = (string) ($sourceUser['password'] ?? '');
+        $name = trim((string) ($sourceUser['name'] ?? $user));
+
+        if ($email === '' || $user === '' || $password === '') {
+            throw new \RuntimeException('No se pudo sincronizar el usuario del cliente.');
+        }
+
+        $db = Database::connect('alfareserva');
+        $table = "`{$base}`.`user`";
+        $existing = $db->query(
+            "SELECT id FROM {$table} WHERE email = ? OR user = ? LIMIT 1",
+            [$email, $user]
+        )->getRowArray();
+
+        if ($existing) {
+            $db->query(
+                "UPDATE {$table} SET `user` = ?, `email` = ?, `password` = ?, `name` = ?, `active` = 1 WHERE id = ?",
+                [$user, $email, $password, $name, (int) $existing['id']]
+            );
+            return;
+        }
+
+        $db->query(
+            "INSERT INTO {$table} (`user`, `email`, `password`, `name`, `active`) VALUES (?, ?, ?, ?, 1)",
+            [$user, $email, $password, $name]
+        );
+    }
+
+    private function upsertClienteContrato(int $clienteId, int $planId, string $periodo, int $includedUsers, int $includedResources): void
+    {
+        $db = Database::connect('alfareserva');
+        if (!$db->tableExists('cliente_contratos') || !$db->tableExists('planes')) {
+            return;
+        }
+        if ($clienteId <= 0 || $planId <= 0) {
+            return;
+        }
+
+        $periodo = strtoupper(trim($periodo)) === 'YEAR' ? 'YEAR' : 'MONTH';
+        $plan = $db->table('planes')->where('id', $planId)->get()->getRowArray();
+        if (!$plan) {
+            throw new \RuntimeException('El plan seleccionado no existe.');
+        }
+
+        $price = $periodo === 'YEAR'
+            ? (float) ($plan['price_year'] ?? 0)
+            : (float) ($plan['price_month'] ?? 0);
+
+        $payload = [
+            'cliente_id' => $clienteId,
+            'plan_id' => $planId,
+            'periodo' => $periodo,
+            'estado' => 'ACTIVE',
+            'included_users' => max(0, $includedUsers),
+            'included_resources' => max(0, $includedResources),
+            'extra_users' => 0,
+            'extra_resources' => 0,
+            'precio_total' => $price,
+            'start_at' => date('Y-m-d'),
+            'end_at' => $periodo === 'YEAR' ? date('Y-m-d', strtotime('+1 year')) : date('Y-m-d', strtotime('+1 month')),
+        ];
+
+        $existing = $db->table('cliente_contratos')
+            ->where('cliente_id', $clienteId)
+            ->orderBy('id', 'DESC')
+            ->get()
+            ->getRowArray();
+
+        if ($existing) {
+            $db->table('cliente_contratos')->where('id', (int) $existing['id'])->update($payload);
+            return;
+        }
+
+        $db->table('cliente_contratos')->insert($payload);
+    }
+
     public function saveCliente()
     {
         $clientesModel = new ClientesModel();
         $rubrosModel = new RubrosModel();
-        $usersModel = new UsersModel();
 
         $codigo = $this->getNextClienteCodigo();
         $razonSocial = trim((string) $this->request->getVar('razon_social'));
@@ -1165,6 +2100,12 @@ class Superadmin extends BaseController
         $linkPathInput = trim((string) $this->request->getVar('link_path'));
         $idRubro = (int) $this->request->getVar('id_rubro');
         $email = strtolower(trim((string) $this->request->getVar('email')));
+        $planId = (int) ($this->request->getVar('plan_id') ?? 0);
+        $contratoPeriodo = strtoupper(trim((string) ($this->request->getVar('contrato_periodo') ?? 'MONTH')));
+        $includedUsers = (int) ($this->request->getVar('included_users') ?? 1);
+        $includedResources = (int) ($this->request->getVar('included_resources') ?? 2);
+        $userPassword = (string) $this->request->getVar('user_password');
+        $userPasswordConfirm = (string) $this->request->getVar('user_password_confirm');
         $nombreApellido = trim((string) $this->request->getVar('nombre_apellido'));
         $telefono = trim((string) $this->request->getVar('telefono'));
         $dni = trim((string) $this->request->getVar('dni'));
@@ -1178,8 +2119,7 @@ class Superadmin extends BaseController
         if ($razonSocial === '' || $base === '' || $idRubro <= 0 || $email === '') {
             return redirect()->to('/abmAdmin')->with('msg', ['type' => 'danger', 'body' => 'Debe completar todos los datos del cliente.']);
         }
-
-        if ($this->databaseExists($base)) {
+        if ($this->databaseExists($base) || $this->clienteBaseExists($base)) {
             return redirect()->to('/abmAdmin')->with('msg', [
                 'type' => 'danger',
                 'body' => 'Ya existe una base con ese nombre. Ingrese otra.'
@@ -1189,16 +2129,18 @@ class Superadmin extends BaseController
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
             return redirect()->to('/abmAdmin')->with('msg', ['type' => 'danger', 'body' => 'El email ingresado no es valido.']);
         }
-
-        $sourceUser = $usersModel
-            ->where('email', $email)
-            ->where('active', 1)
-            ->first();
-        if (!$sourceUser) {
-            return redirect()->to('/abmAdmin')->with('msg', [
-                'type' => 'danger',
-                'body' => 'No existe un usuario activo con ese email. Primero cree el usuario y luego el cliente.',
-            ]);
+        $usersModel = new UsersModel();
+        if ($usersModel->where('email', $email)->first()) {
+            return redirect()->to('/abmAdmin')->with('msg', ['type' => 'danger', 'body' => 'El email ya existe en AlfaReserva. Ingrese otro.']);
+        }
+        if ($userPassword === '' || $userPasswordConfirm === '') {
+            return redirect()->to('/abmAdmin')->with('msg', ['type' => 'danger', 'body' => 'Debe ingresar y repetir la contrasena del cliente.']);
+        }
+        if ($userPassword !== $userPasswordConfirm) {
+            return redirect()->to('/abmAdmin')->with('msg', ['type' => 'danger', 'body' => 'Las contrasenas no coinciden.']);
+        }
+        if (!$this->isValidPasswordComplexity($userPassword)) {
+            return redirect()->to('/abmAdmin')->with('msg', ['type' => 'danger', 'body' => 'La contrasena debe tener al menos una mayuscula, una minuscula y un numero.']);
         }
 
         $rubro = $rubrosModel->find($idRubro);
@@ -1206,28 +2148,26 @@ class Superadmin extends BaseController
             return redirect()->to('/abmAdmin')->with('msg', ['type' => 'danger', 'body' => 'El rubro seleccionado no existe.']);
         }
 
+        $cuentaCliente = $this->resolveClienteCuenta($codigo, $base);
+        $displayName = $nombreApellido !== '' ? $nombreApellido : $razonSocial;
+        $sourceUser = $this->upsertClienteAccessUser($email, $userPassword, $displayName, $cuentaCliente);
+
         $databaseCreated = false;
         try {
             $this->createDatabase($base);
             $databaseCreated = true;
             $this->provisionClienteDatabase($base, (string) ($rubro['descripcion'] ?? ''));
-            $dbAlfa = Database::connect('alfareserva');
+            $this->upsertTenantUser($base, $sourceUser, $email);
 
-            $dbAlfa->query(
-                "INSERT INTO `{$base}`.`user` (`user`, `email`, `password`, `name`, `active`) VALUES (?, ?, ?, ?, 1)",
-                [
-                    (string) ($sourceUser['user'] ?? ''),
-                    (string) ($sourceUser['email'] ?? ''),
-                    (string) ($sourceUser['password'] ?? ''),
-                    (string) ($sourceUser['name'] ?? ($sourceUser['user'] ?? '')),
-                ]
-            );
-
-            $linkSlug = $this->normalizeTenantKey($linkPathInput !== '' ? ltrim($linkPathInput, '/') : $base);
+            $linkSeed = $linkPathInput !== '' ? ltrim($linkPathInput, '/') : $base;
+            $linkSlug = $this->normalizeTenantKey($linkSeed);
             if ($linkSlug === '') {
                 throw new \RuntimeException('No se pudo generar un link valido para el cliente.');
             }
             $link = $this->buildClienteLink($linkSlug);
+            if ($this->clienteLinkExists($link)) {
+                throw new \RuntimeException('El link ingresado ya existe.');
+            }
 
             $clientesModel->insert([
                 'codigo' => $codigo,
@@ -1243,6 +2183,8 @@ class Superadmin extends BaseController
                 'estado' => $estado,
                 'link' => $link,
             ]);
+            $clienteId = (int) $clientesModel->getInsertID();
+            $this->upsertClienteContrato($clienteId, $planId, $contratoPeriodo, $includedUsers, $includedResources);
         } catch (\Exception $e) {
             if ($databaseCreated) {
                 try {
@@ -1262,12 +2204,17 @@ class Superadmin extends BaseController
     {
         $clientesModel = new ClientesModel();
         $rubrosModel = new RubrosModel();
-        $usersModel = new UsersModel();
 
         $id = (int) ($this->request->getVar('id') ?? 0);
         $razonSocial = trim((string) $this->request->getVar('razon_social'));
         $idRubro = (int) $this->request->getVar('id_rubro');
         $email = strtolower(trim((string) $this->request->getVar('email')));
+        $planId = (int) ($this->request->getVar('plan_id') ?? 0);
+        $contratoPeriodo = strtoupper(trim((string) ($this->request->getVar('contrato_periodo') ?? 'MONTH')));
+        $includedUsers = (int) ($this->request->getVar('included_users') ?? 1);
+        $includedResources = (int) ($this->request->getVar('included_resources') ?? 2);
+        $userPassword = (string) $this->request->getVar('user_password');
+        $userPasswordConfirm = (string) $this->request->getVar('user_password_confirm');
         $linkPathInput = trim((string) $this->request->getVar('link_path'));
         $nombreApellido = trim((string) $this->request->getVar('nombre_apellido'));
         $telefono = trim((string) $this->request->getVar('telefono'));
@@ -1285,16 +2232,28 @@ class Superadmin extends BaseController
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
             return $this->response->setJSON($this->setResponse(400, true, null, 'El email ingresado no es valido.'));
         }
+        if ($id <= 0) {
+            if ($userPassword === '' || $userPasswordConfirm === '') {
+                return $this->response->setJSON($this->setResponse(400, true, null, 'Debe ingresar y repetir la contrasena del cliente.'));
+            }
+            if ($userPassword !== $userPasswordConfirm) {
+                return $this->response->setJSON($this->setResponse(400, true, null, 'Las contrasenas no coinciden.'));
+            }
+            if (!$this->isValidPasswordComplexity($userPassword)) {
+                return $this->response->setJSON($this->setResponse(400, true, null, 'La contrasena debe tener al menos una mayuscula, una minuscula y un numero.'));
+            }
+        } else {
+            $hasOnePassword = ($userPassword !== '' || $userPasswordConfirm !== '');
+            if ($hasOnePassword && $userPassword !== $userPasswordConfirm) {
+                return $this->response->setJSON($this->setResponse(400, true, null, 'Las contrasenas no coinciden.'));
+            }
+            if ($hasOnePassword && !$this->isValidPasswordComplexity($userPassword)) {
+                return $this->response->setJSON($this->setResponse(400, true, null, 'La contrasena debe tener al menos una mayuscula, una minuscula y un numero.'));
+            }
+        }
         $rubro = $rubrosModel->find($idRubro);
         if (!$rubro) {
             return $this->response->setJSON($this->setResponse(404, true, null, 'El rubro seleccionado no existe.'));
-        }
-        $sourceUser = $usersModel
-            ->where('email', $email)
-            ->where('active', 1)
-            ->first();
-        if (!$sourceUser) {
-            return $this->response->setJSON($this->setResponse(400, true, null, 'No existe un usuario activo con ese email.'));
         }
 
         try {
@@ -1303,6 +2262,20 @@ class Superadmin extends BaseController
                 if (!$cliente) {
                     return $this->response->setJSON($this->setResponse(404, true, null, 'Cliente no encontrado.'));
                 }
+                $usersModel = new UsersModel();
+                $previousEmail = strtolower(trim((string) ($cliente['email'] ?? '')));
+                if ($previousEmail !== $email && $usersModel->where('email', $email)->first()) {
+                    return $this->response->setJSON($this->setResponse(409, true, null, 'El email ya existe en AlfaReserva. Ingrese otro.'));
+                }
+                $cuentaCliente = $this->resolveClienteCuenta((string) ($cliente['codigo'] ?? ''), (string) ($cliente['base'] ?? ''));
+                $displayName = $nombreApellido !== '' ? $nombreApellido : $razonSocial;
+                $sourceUser = $this->upsertClienteAccessUser(
+                    $email,
+                    $userPassword,
+                    $displayName,
+                    $cuentaCliente,
+                    $previousEmail
+                );
 
                 $linkSlug = $this->normalizeTenantKey($linkPathInput !== '' ? ltrim($linkPathInput, '/') : (string) ($cliente['base'] ?? ''));
                 if ($linkSlug === '') {
@@ -1332,14 +2305,24 @@ class Superadmin extends BaseController
                     'estado' => $estado,
                     'link' => $link,
                 ]);
+
+                $baseCliente = trim((string) ($cliente['base'] ?? ''));
+                if ($baseCliente !== '') {
+                    $this->upsertTenantUser($baseCliente, $sourceUser, (string) ($cliente['email'] ?? ''));
+                }
+                $this->upsertClienteContrato($id, $planId, $contratoPeriodo, $includedUsers, $includedResources);
             } else {
                 $codigo = $this->getNextClienteCodigo();
                 $base = $this->normalizeTenantKey($razonSocial);
                 if ($base === '') {
                     return $this->response->setJSON($this->setResponse(400, true, null, 'No se pudo generar la base del cliente.'));
                 }
-                if ($this->databaseExists($base)) {
+                if ($this->databaseExists($base) || $this->clienteBaseExists($base)) {
                     return $this->response->setJSON($this->setResponse(409, true, null, 'Ya existe una base con ese nombre. Ingrese otra.'));
+                }
+                $usersModel = new UsersModel();
+                if ($usersModel->where('email', $email)->first()) {
+                    return $this->response->setJSON($this->setResponse(409, true, null, 'El email ya existe en AlfaReserva. Ingrese otro.'));
                 }
 
                 $databaseCreated = false;
@@ -1347,23 +2330,21 @@ class Superadmin extends BaseController
                     $this->createDatabase($base);
                     $databaseCreated = true;
                     $this->provisionClienteDatabase($base, (string) ($rubro['descripcion'] ?? ''));
+                    $cuentaCliente = $this->resolveClienteCuenta($codigo, $base);
+                    $displayName = $nombreApellido !== '' ? $nombreApellido : $razonSocial;
+                    $sourceUser = $this->upsertClienteAccessUser($email, $userPassword, $displayName, $cuentaCliente);
 
-                    $dbAlfa = Database::connect('alfareserva');
-                    $dbAlfa->query(
-                        "INSERT INTO `{$base}`.`user` (`user`, `email`, `password`, `name`, `active`) VALUES (?, ?, ?, ?, 1)",
-                        [
-                            (string) ($sourceUser['user'] ?? ''),
-                            (string) ($sourceUser['email'] ?? ''),
-                            (string) ($sourceUser['password'] ?? ''),
-                            (string) ($sourceUser['name'] ?? ($sourceUser['user'] ?? '')),
-                        ]
-                    );
+                    $this->upsertTenantUser($base, $sourceUser, $email);
 
-                    $linkSlug = $this->normalizeTenantKey($linkPathInput !== '' ? ltrim($linkPathInput, '/') : $base);
+                    $linkSeed = $linkPathInput !== '' ? ltrim($linkPathInput, '/') : $base;
+                    $linkSlug = $this->normalizeTenantKey($linkSeed);
                     if ($linkSlug === '') {
                         throw new \RuntimeException('No se pudo generar un link valido para el cliente.');
                     }
                     $link = $this->buildClienteLink($linkSlug);
+                    if ($this->clienteLinkExists($link)) {
+                        throw new \RuntimeException('El link ingresado ya existe.');
+                    }
 
                     $clientesModel->insert([
                         'codigo' => $codigo,
@@ -1379,6 +2360,8 @@ class Superadmin extends BaseController
                         'estado' => $estado,
                         'link' => $link,
                     ]);
+                    $clienteId = (int) $clientesModel->getInsertID();
+                    $this->upsertClienteContrato($clienteId, $planId, $contratoPeriodo, $includedUsers, $includedResources);
                 } catch (\Exception $e) {
                     if ($databaseCreated) {
                         try {
@@ -1439,6 +2422,258 @@ class Superadmin extends BaseController
         return $this->response->setJSON($this->setResponse(null, false, [
             'clientes' => $clientes,
         ], 'Cliente ' . $estadoTexto . ' correctamente.'));
+    }
+
+    public function saveClientProfileAjax()
+    {
+        $cliente = $this->scopedCurrentClienteOrNull();
+        if (!$cliente) {
+            return $this->response->setJSON($this->setResponse(403, true, null, 'No autorizado.'));
+        }
+
+        $id = (int) ($this->request->getVar('id') ?? 0);
+        if ($id <= 0 || $id !== (int) ($cliente['id'] ?? 0)) {
+            return $this->response->setJSON($this->setResponse(403, true, null, 'No autorizado.'));
+        }
+
+        $razonSocial = trim((string) $this->request->getVar('razon_social'));
+        $nombreApellido = trim((string) $this->request->getVar('nombre_apellido'));
+        if ($razonSocial === '') {
+            return $this->response->setJSON($this->setResponse(400, true, null, 'La razon social es obligatoria.'));
+        }
+
+        $clientesModel = new ClientesModel();
+        $clientesModel->update($id, [
+            'razon_social' => $razonSocial,
+            'NombreApellido' => $nombreApellido !== '' ? $nombreApellido : null,
+        ]);
+
+        return $this->response->setJSON($this->setResponse(null, false, null, 'Perfil actualizado correctamente.'));
+    }
+
+    public function saveClientLogoAjax()
+    {
+        $cliente = $this->scopedCurrentClienteOrNull();
+        if (!$cliente) {
+            return $this->response->setJSON($this->setResponse(403, true, null, 'No autorizado.'));
+        }
+
+        $id = (int) ($this->request->getVar('id') ?? 0);
+        if ($id <= 0 || $id !== (int) ($cliente['id'] ?? 0)) {
+            return $this->response->setJSON($this->setResponse(403, true, null, 'No autorizado.'));
+        }
+
+        $file = $this->request->getFile('logo');
+        if (!$file || !$file->isValid()) {
+            return $this->response->setJSON($this->setResponse(400, true, null, 'Debe seleccionar un archivo válido.'));
+        }
+
+        $allowed = ['png', 'jpg', 'jpeg', 'webp'];
+        $ext = strtolower((string) $file->getExtension());
+        if (!in_array($ext, $allowed, true)) {
+            return $this->response->setJSON($this->setResponse(400, true, null, 'Formato de logo no permitido.'));
+        }
+
+        $codigo = trim((string) ($cliente['codigo'] ?? ''));
+        if ($codigo === '') {
+            return $this->response->setJSON($this->setResponse(400, true, null, 'No se encontró código de cliente.'));
+        }
+
+        $targetDir = rtrim(FCPATH, '/\\') . DIRECTORY_SEPARATOR . $codigo;
+        if (!is_dir($targetDir) && !mkdir($targetDir, 0775, true) && !is_dir($targetDir)) {
+            return $this->response->setJSON($this->setResponse(500, true, null, 'No se pudo crear carpeta de logo.'));
+        }
+
+        foreach (['logo.png', 'logo.jpg', 'logo.jpeg', 'logo.webp'] as $oldLogo) {
+            $oldPath = $targetDir . DIRECTORY_SEPARATOR . $oldLogo;
+            if (is_file($oldPath)) {
+                @unlink($oldPath);
+            }
+        }
+
+        $targetName = 'logo.' . $ext;
+        if (!$file->move($targetDir, $targetName, true)) {
+            return $this->response->setJSON($this->setResponse(500, true, null, 'No se pudo guardar el logo.'));
+        }
+
+        return $this->response->setJSON($this->setResponse(null, false, null, 'Logo actualizado correctamente.'));
+    }
+
+    public function saveOwnClientPasswordAjax()
+    {
+        $cliente = $this->scopedCurrentClienteOrNull();
+        if (!$cliente) {
+            return $this->response->setJSON($this->setResponse(403, true, null, 'No autorizado.'));
+        }
+
+        $currentPassword = (string) ($this->request->getVar('current_password') ?? '');
+        $newPassword = (string) ($this->request->getVar('new_password') ?? '');
+        $repeatPassword = (string) ($this->request->getVar('repeat_password') ?? '');
+        if ($currentPassword === '' || $newPassword === '' || $repeatPassword === '') {
+            return $this->response->setJSON($this->setResponse(400, true, null, 'Debe completar todos los campos de contrasena.'));
+        }
+        if ($newPassword !== $repeatPassword) {
+            return $this->response->setJSON($this->setResponse(400, true, null, 'Las contrasenas no coinciden.'));
+        }
+        if (!$this->isValidPasswordComplexity($newPassword)) {
+            return $this->response->setJSON($this->setResponse(400, true, null, 'La contrasena debe tener al menos una mayuscula, una minuscula y un numero.'));
+        }
+
+        $userId = (int) (session()->get('id_user') ?? 0);
+        if ($userId <= 0) {
+            return $this->response->setJSON($this->setResponse(403, true, null, 'Sesion invalida.'));
+        }
+
+        $usersModel = new UsersModel();
+        $sessionUser = $usersModel->find($userId);
+        if (!$sessionUser || (int) ($sessionUser['active'] ?? 0) !== 1) {
+            return $this->response->setJSON($this->setResponse(404, true, null, 'Usuario no encontrado.'));
+        }
+        if (!password_verify($currentPassword, (string) ($sessionUser['password'] ?? ''))) {
+            return $this->response->setJSON($this->setResponse(400, true, null, 'La contrasena actual no es correcta.'));
+        }
+
+        $newHash = password_hash($newPassword, PASSWORD_DEFAULT);
+        $usersModel->update($userId, ['password' => $newHash]);
+
+        $base = trim((string) ($cliente['base'] ?? ''));
+        $email = strtolower(trim((string) ($sessionUser['email'] ?? '')));
+        $userName = trim((string) ($sessionUser['user'] ?? ''));
+        if ($base !== '' && $this->databaseExists($base)) {
+            try {
+                $db = Database::connect('alfareserva');
+                $table = "`{$base}`.`user`";
+                $tenantRow = $db->query(
+                    "SELECT id FROM {$table} WHERE email = ? OR `user` = ? LIMIT 1",
+                    [$email, $userName]
+                )->getRowArray();
+                if ($tenantRow) {
+                    $db->query("UPDATE {$table} SET password = ? WHERE id = ?", [$newHash, (int) $tenantRow['id']]);
+                }
+            } catch (\Throwable $e) {
+            }
+        }
+
+        return $this->response->setJSON($this->setResponse(null, false, null, 'Contrasena actualizada correctamente.'));
+    }
+
+    public function addClientBaseUserAjax()
+    {
+        $cliente = $this->scopedCurrentClienteOrNull();
+        if (!$cliente) {
+            return $this->response->setJSON($this->setResponse(403, true, null, 'No autorizado.'));
+        }
+
+        $base = trim((string) ($cliente['base'] ?? ''));
+        if ($base === '' || !$this->databaseExists($base)) {
+            return $this->response->setJSON($this->setResponse(404, true, null, 'No se encontro la base del cliente.'));
+        }
+
+        $user = trim((string) ($this->request->getVar('user') ?? ''));
+        $email = strtolower(trim((string) ($this->request->getVar('email') ?? '')));
+        $password = (string) ($this->request->getVar('password') ?? '');
+        $repeatPassword = (string) ($this->request->getVar('repeat_password') ?? '');
+
+        if ($user === '' || $password === '') {
+            return $this->response->setJSON($this->setResponse(400, true, null, 'Debe completar usuario y contrasena.'));
+        }
+        if ($password !== $repeatPassword) {
+            return $this->response->setJSON($this->setResponse(400, true, null, 'Las contrasenas no coinciden.'));
+        }
+        if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return $this->response->setJSON($this->setResponse(400, true, null, 'Email invalido.'));
+        }
+        if (!$this->isValidPasswordComplexity($password)) {
+            return $this->response->setJSON($this->setResponse(400, true, null, 'La contrasena debe tener al menos una mayuscula, una minuscula y un numero.'));
+        }
+
+        $db = Database::connect('alfareserva');
+        $table = "`{$base}`.`user`";
+        try {
+            $quota = $this->getClientUsersQuota($cliente, $base);
+            if ((int) ($quota['total'] ?? 0) <= 0) {
+                return $this->response->setJSON($this->setResponse(409, true, null, 'Tu plan actual no tiene cupo de usuarios. Actualiza el plan para agregar usuarios.'));
+            }
+            if ((int) ($quota['remaining'] ?? 0) <= 0) {
+                return $this->response->setJSON($this->setResponse(409, true, null, 'No te quedan usuarios disponibles en tu plan.'));
+            }
+
+            if ($email !== '') {
+                $dup = $db->query(
+                    "SELECT id FROM {$table} WHERE email = ? OR `user` = ? LIMIT 1",
+                    [$email, $user]
+                )->getRowArray();
+            } else {
+                $dup = $db->query(
+                    "SELECT id FROM {$table} WHERE `user` = ? LIMIT 1",
+                    [$user]
+                )->getRowArray();
+            }
+            if ($dup) {
+                return $this->response->setJSON($this->setResponse(409, true, null, 'El usuario o email ya existe en esta base.'));
+            }
+
+            $hash = password_hash($password, PASSWORD_DEFAULT);
+            $db->query(
+                "INSERT INTO {$table} (`user`, email, password, name, active) VALUES (?, ?, ?, ?, 1)",
+                [$user, $email, $hash, $user]
+            );
+
+            $tenantUsers = $this->getTenantUsers($base);
+            $quotaAfter = $this->getClientUsersQuota($cliente, $base);
+            return $this->response->setJSON($this->setResponse(null, false, [
+                'users' => $tenantUsers,
+                'quota' => $quotaAfter,
+            ], 'Usuario agregado en la base del cliente.'));
+        } catch (\Throwable $e) {
+            return $this->response->setJSON($this->setResponse(500, true, null, $e->getMessage()));
+        }
+    }
+
+    public function saveClientPlanAjax()
+    {
+        $cliente = $this->scopedCurrentClienteOrNull();
+        if (!$cliente) {
+            return $this->response->setJSON($this->setResponse(403, true, null, 'No autorizado.'));
+        }
+
+        $id = (int) ($this->request->getVar('id') ?? 0);
+        if ($id <= 0 || $id !== (int) ($cliente['id'] ?? 0)) {
+            return $this->response->setJSON($this->setResponse(403, true, null, 'No autorizado.'));
+        }
+
+        $planId = (int) ($this->request->getVar('plan_id') ?? 0);
+        $periodo = strtoupper(trim((string) ($this->request->getVar('periodo') ?? 'MONTH')));
+        if ($planId <= 0) {
+            return $this->response->setJSON($this->setResponse(400, true, null, 'Debe seleccionar un plan.'));
+        }
+
+        $db = Database::connect('alfareserva');
+        $plan = $db->table('planes')->where('id', $planId)->where('activo', 1)->get()->getRowArray();
+        if (!$plan) {
+            return $this->response->setJSON($this->setResponse(404, true, null, 'El plan seleccionado no existe o esta inactivo.'));
+        }
+
+        $includedUsers = (int) ($this->request->getVar('included_users') ?? ($plan['included_users'] ?? 1));
+        $includedResources = (int) ($this->request->getVar('included_resources') ?? ($plan['included_resources'] ?? 2));
+        $this->upsertClienteContrato($id, $planId, $periodo, $includedUsers, $includedResources);
+
+        // Si el cliente estaba en prueba, al asignar plan pasa a activo.
+        $clientesModel = new ClientesModel();
+        $clienteActual = $clientesModel->find($id);
+        if (is_array($clienteActual)) {
+            $estadoActual = strtoupper(trim((string) ($clienteActual['estado'] ?? '')));
+            if ($estadoActual === '' || $estadoActual === 'TRIAL') {
+                $clientesModel->update($id, ['estado' => 'ACTIVE']);
+            }
+        }
+
+        return $this->response->setJSON($this->setResponse(null, false, [
+            'planNombre' => (string) ($plan['nombre'] ?? ''),
+            'periodo' => $periodo,
+            'includedUsers' => $includedUsers,
+            'includedResources' => $includedResources,
+        ], 'Plan actualizado correctamente.'));
     }
 
     public function saveRubro()
