@@ -4,6 +4,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <?php $security = config('Security'); ?>
+    <meta name="csrf-token-name" content="<?= esc($security->tokenName) ?>">
+    <meta name="csrf-header-name" content="<?= esc($security->headerName) ?>">
+    <meta name="csrf-cookie-name" content="<?= esc($security->cookieName) ?>">
+    <meta name="csrf-hash" content="<?= esc(csrf_hash()) ?>">
     <title>Editar cliente</title>
     <link rel="stylesheet" href="<?= base_url(PUBLIC_FOLDER . "assets/css/theme.css") ?>">
     <link rel="stylesheet" href="<?= base_url(PUBLIC_FOLDER . "assets/css/styles.css") ?>">

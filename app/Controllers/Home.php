@@ -245,6 +245,12 @@ class Home extends BaseController
 
     public function deleteRejected()
     {
+        if (!$this->request->is('post')) {
+            return $this->response
+                ->setStatusCode(405)
+                ->setJSON($this->setResponse(405, true, null, 'Metodo no permitido'));
+        }
+
         $bookingsModel = new BookingsModel();
         $mercadoPagoModel = new MercadoPagoModel();
         // Necesitas cargar el modelo de la tabla que causa el error

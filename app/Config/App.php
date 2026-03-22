@@ -447,4 +447,14 @@ class App extends BaseConfig
      * @see http://www.w3.org/TR/CSP/
      */
     public bool $CSPEnabled = false;
+
+    public function __construct()
+    {
+        parent::__construct();
+
+        $isProduction = env('CI_ENVIRONMENT', 'production') === 'production';
+
+        $this->forceGlobalSecureRequests = $isProduction;
+        $this->cookieSecure = $isProduction;
+    }
 }

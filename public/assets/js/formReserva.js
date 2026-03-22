@@ -511,7 +511,9 @@ telefono.addEventListener('input', async () => {
 
 async function deleteRejected() {
     try {
-        const response = await fetch(`${baseUrl}deleteRejected`);
+        const response = await fetch(`${baseUrl}deleteRejected`, {
+            method: 'POST'
+        });
 
         const responseData = await response.json();
 

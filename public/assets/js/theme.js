@@ -1,5 +1,9 @@
 (function () {
     const STORAGE_KEY = 'alfa_theme';
+    const csrfTokenMeta = document.querySelector('meta[name="csrf-token-name"]');
+    const csrfHeaderMeta = document.querySelector('meta[name="csrf-header-name"]');
+    const csrfCookieMeta = document.querySelector('meta[name="csrf-cookie-name"]');
+    const csrfHashMeta = document.querySelector('meta[name="csrf-hash"]');
     const SUN_ICON = [
         '<svg class="theme-toggle-active-icon" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">',
         '<path d="M8 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8M8 0a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-1 0v-2A.5.5 0 0 1 8 0m0 13a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-1 0v-2A.5.5 0 0 1 8 13m8-5a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1 0-1h2a.5.5 0 0 1 .5.5M3 8a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1 0-1h2A.5.5 0 0 1 3 8m10.657-5.657a.5.5 0 0 1 0 .707l-1.414 1.415a.5.5 0 1 1-.707-.708l1.414-1.414a.5.5 0 0 1 .707 0m-9.193 9.193a.5.5 0 0 1 0 .707L3.05 13.657a.5.5 0 0 1-.707-.707l1.414-1.414a.5.5 0 0 1 .707 0m9.193 2.121a.5.5 0 0 1-.707 0l-1.414-1.414a.5.5 0 0 1 .707-.707l1.414 1.414a.5.5 0 0 1 0 .707M4.464 4.465a.5.5 0 0 1-.707 0L2.343 3.05a.5.5 0 1 1 .707-.707l1.414 1.414a.5.5 0 0 1 0 .708"/>',
@@ -11,6 +15,99 @@
         '<path d="M10.794 3.148a.217.217 0 0 1 .412 0l.387 1.162c.173.518.579.924 1.097 1.097l1.162.387a.217.217 0 0 1 0 .412l-1.162.387a1.73 1.73 0 0 0-1.097 1.097l-.387 1.162a.217.217 0 0 1-.412 0l-.387-1.162A1.73 1.73 0 0 0 9.31 6.593l-1.162-.387a.217.217 0 0 1 0-.412l1.162-.387a1.73 1.73 0 0 0 1.097-1.097zM13.863.099a.145.145 0 0 1 .274 0l.258.774c.115.346.386.617.732.732l.774.258a.145.145 0 0 1 0 .274l-.774.258a1.16 1.16 0 0 0-.732.732l-.258.774a.145.145 0 0 1-.274 0l-.258-.774a1.16 1.16 0 0 0-.732-.732l-.774-.258a.145.145 0 0 1 0-.274l.774-.258c.346-.115.617-.386.732-.732z"/>',
         '</svg>'
     ].join('');
+
+    function getCookie(name) {
+        const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const match = document.cookie.match(new RegExp('(?:^|; )' + escapedName + '=([^;]*)'));
+
+        return match ? decodeURIComponent(match[1]) : '';
+    }
+
+    function getCsrfConfig() {
+        if (!csrfTokenMeta || !csrfHeaderMeta || !csrfCookieMeta) {
+            return null;
+        }
+
+        return {
+            tokenName: csrfTokenMeta.content,
+            headerName: csrfHeaderMeta.content,
+            cookieName: csrfCookieMeta.content
+        };
+    }
+
+    function getCsrfHash() {
+        const csrfConfig = getCsrfConfig();
+
+        if (!csrfConfig) {
+            return '';
+        }
+
+        return getCookie(csrfConfig.cookieName) || (csrfHashMeta ? csrfHashMeta.content : '');
+    }
+
+    function syncCsrfField(form) {
+        const csrfConfig = getCsrfConfig();
+        const csrfHash = getCsrfHash();
+
+        if (!csrfConfig || !csrfHash || !form) {
+            return;
+        }
+
+        let input = form.querySelector('input[name="' + csrfConfig.tokenName + '"]');
+
+        if (!input) {
+            input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = csrfConfig.tokenName;
+            form.appendChild(input);
+        }
+
+        input.value = csrfHash;
+    }
+
+    function syncAllCsrfForms() {
+        document.querySelectorAll('form').forEach(syncCsrfField);
+    }
+
+    function shouldAttachCsrf(url, method) {
+        if (!url || method === 'GET' || method === 'HEAD' || method === 'OPTIONS') {
+            return false;
+        }
+
+        try {
+            const requestUrl = new URL(url, window.location.href);
+
+            return requestUrl.origin === window.location.origin;
+        } catch (e) {
+            return true;
+        }
+    }
+
+    if (window.fetch) {
+        const originalFetch = window.fetch.bind(window);
+
+        window.fetch = function (input, init) {
+            const request = input instanceof Request ? input : null;
+            const method = ((init && init.method) || (request && request.method) || 'GET').toUpperCase();
+            const url = request ? request.url : String(input);
+            const csrfConfig = getCsrfConfig();
+            const csrfHash = getCsrfHash();
+
+            if (!csrfConfig || !csrfHash || !shouldAttachCsrf(url, method)) {
+                return originalFetch(input, init);
+            }
+
+            const nextInit = init ? Object.assign({}, init) : {};
+            const headers = new Headers(nextInit.headers || (request && request.headers) || undefined);
+            headers.set(csrfConfig.headerName, csrfHash);
+            nextInit.headers = headers;
+
+            return originalFetch(input, nextInit).then(function (response) {
+                syncAllCsrfForms();
+                return response;
+            });
+        };
+    }
 
     function applyTheme(mode) {
         document.body.classList.toggle('theme-dark', mode === 'dark');
@@ -89,8 +186,15 @@
 
     document.addEventListener('DOMContentLoaded', function () {
         const saved = localStorage.getItem(STORAGE_KEY) === 'dark' ? 'dark' : 'light';
+        syncAllCsrfForms();
         ensureToggleButton();
         applyTheme(saved);
         enhanceLegacyAdminFooter();
     });
+
+    document.addEventListener('submit', function (event) {
+        if (event.target instanceof HTMLFormElement) {
+            syncCsrfField(event.target);
+        }
+    }, true);
 })();

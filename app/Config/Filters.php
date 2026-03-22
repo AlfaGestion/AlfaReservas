@@ -31,13 +31,12 @@ class Filters extends BaseConfig
     public array $globals = [
         'before' => [
             // 'honeypot',
-            // 'csrf',
-            // 'invalidchars',
+            'csrf',
+            'invalidchars',
         ],
         'after' => [
-            'toolbar',
             // 'honeypot',
-            // 'secureheaders',
+            'secureheaders',
         ],
     ];
 
@@ -62,4 +61,13 @@ class Filters extends BaseConfig
      * 'isLoggedIn' => ['before' => ['account/*', 'profiles/*']]
      */
     public array $filters = [];
+
+    public function __construct()
+    {
+        parent::__construct();
+
+        if (env('CI_ENVIRONMENT', 'production') !== 'production') {
+            $this->globals['after'][] = 'toolbar';
+        }
+    }
 }
