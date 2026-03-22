@@ -8,6 +8,7 @@ $userBackground = $modelUploads->first();
 
 $mpKeysModel = new MercadoPagoKeysModel();
 $mpKeys = $mpKeysModel->first();
+$tenantLogoUrl = trim((string) (session()->get('tenant_logo_url') ?? ''));
 
 
 ?>
@@ -36,13 +37,13 @@ $mpKeys = $mpKeysModel->first();
                 <div class="modal-content d-flex justify-content-center align-items-center flex-column text-center" style="background: url(<?= base_url(PUBLIC_FOLDER . "assets/images/uploads/" . $userBackground['name']) ?>);">
 
                     <div class="modal-body d-flex justify-content-center align-items-center">
-                        <img src="<?= base_url(PUBLIC_FOLDER . "assets/images/wlogo.png") ?>" class="mainModalImg" width="450px" alt="Logo">
+                        <img src="<?= esc($tenantLogoUrl !== '' ? $tenantLogoUrl : base_url(PUBLIC_FOLDER . "assets/images/wlogo.png")) ?>" class="mainModalImg" width="450px" alt="Logo">
                     </div>
                 <?php else : ?>
                     <div class="modal-content d-flex justify-content-center align-items-center flex-column text-center">
 
                         <div class="modal-body d-flex justify-content-center align-items-center">
-                            <img src="<?= base_url(PUBLIC_FOLDER . "assets/images/logo.png") ?>" class="mainModalImg" width="450px" alt="Logo">
+                            <img src="<?= esc($tenantLogoUrl !== '' ? $tenantLogoUrl : base_url(PUBLIC_FOLDER . "assets/images/logo.png")) ?>" class="mainModalImg" width="450px" alt="Logo">
                         </div>
                     <?php endif; ?>
 

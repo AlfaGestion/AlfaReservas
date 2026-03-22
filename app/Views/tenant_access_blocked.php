@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= esc($title ?? 'Acceso no disponible') ?></title>
-    <link rel="icon" href="<?= base_url('alfa.png') ?>" type="image/png">
+    <link rel="icon" href="<?= base_url('favicon-32x32.png?v=20260317a') ?>" sizes="32x32" type="image/png">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
 <body class="bg-light">

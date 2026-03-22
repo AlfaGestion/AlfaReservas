@@ -499,49 +499,10 @@ class Comida extends BaseController
 
     private function getBranding(string $codigo): array
     {
-        $codigo = trim($codigo);
-        $candidates = [
-            [
-                'dir' => rtrim(FCPATH, '/\\') . DIRECTORY_SEPARATOR . $codigo . DIRECTORY_SEPARATOR,
-                'url' => base_url(PUBLIC_FOLDER . $codigo . '/'),
-            ],
-            [
-                'dir' => rtrim(FCPATH, '/\\') . DIRECTORY_SEPARATOR . 'assets' . DIRECTORY_SEPARATOR . 'tenants' . DIRECTORY_SEPARATOR . $codigo . DIRECTORY_SEPARATOR,
-                'url' => base_url(PUBLIC_FOLDER . 'assets/tenants/' . $codigo . '/'),
-            ],
-        ];
-        $logoCandidates = ['logo.png', 'logo.jpg', 'logo.jpeg', 'logo.webp', 'LOGO.png', 'LOGO.jpg', 'LOGO.jpeg', 'LOGO.webp'];
-        $backgroundCandidates = ['fondo.jpg', 'fondo.png', 'fondo.webp', 'background.jpg', 'background.png', 'background.webp'];
-
-        $logoUrl = null;
-        $backgroundUrl = null;
-        foreach ($candidates as $candidate) {
-            if (!is_dir($candidate['dir'])) {
-                continue;
-            }
-            if ($logoUrl === null) {
-                foreach ($logoCandidates as $file) {
-                    $full = $candidate['dir'] . $file;
-                    if (is_file($full)) {
-                        $logoUrl = $candidate['url'] . $file . '?v=' . ((string) (@filemtime($full) ?: time()));
-                        break;
-                    }
-                }
-            }
-            if ($backgroundUrl === null) {
-                foreach ($backgroundCandidates as $file) {
-                    $full = $candidate['dir'] . $file;
-                    if (is_file($full)) {
-                        $backgroundUrl = $candidate['url'] . $file . '?v=' . ((string) (@filemtime($full) ?: time()));
-                        break;
-                    }
-                }
-            }
-        }
-
+        $branding = $this->resolveTenantBrandingAssets($codigo);
         return [
-            'logo' => $logoUrl,
-            'background' => $backgroundUrl,
+            'logo' => $branding['logo'],
+            'background' => $branding['background'],
         ];
     }
 }

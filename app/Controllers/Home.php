@@ -66,10 +66,12 @@ class Home extends BaseController
             }
 
             $tenant->activate($cliente);
+            $branding = $this->getComidaBranding($codigo);
+            session()->set('tenant_logo_url', (string) ($branding['logo'] ?? ''));
 
             return view('comida/index', [
                 'cliente' => $cliente,
-                'branding' => $this->getComidaBranding($codigo),
+                'branding' => $branding,
                 'catalogo' => $this->getComidaCatalogo($baseCliente),
                 'tenantNotice' => $cliente['tenant_access_notice'] ?? null,
                 'tenantMode' => $cliente['tenant_access_mode'] ?? 'full',
@@ -116,49 +118,10 @@ class Home extends BaseController
 
     private function getComidaBranding(string $codigo): array
     {
-        $codigo = trim($codigo);
-        $candidates = [
-            [
-                'dir' => rtrim(FCPATH, '/\\') . DIRECTORY_SEPARATOR . $codigo . DIRECTORY_SEPARATOR,
-                'url' => base_url(PUBLIC_FOLDER . $codigo . '/'),
-            ],
-            [
-                'dir' => rtrim(FCPATH, '/\\') . DIRECTORY_SEPARATOR . 'assets' . DIRECTORY_SEPARATOR . 'tenants' . DIRECTORY_SEPARATOR . $codigo . DIRECTORY_SEPARATOR,
-                'url' => base_url(PUBLIC_FOLDER . 'assets/tenants/' . $codigo . '/'),
-            ],
-        ];
-        $logoCandidates = ['logo.png', 'logo.jpg', 'logo.jpeg', 'logo.webp', 'LOGO.png', 'LOGO.jpg', 'LOGO.jpeg', 'LOGO.webp'];
-        $backgroundCandidates = ['fondo.jpg', 'fondo.png', 'fondo.webp', 'background.jpg', 'background.png', 'background.webp'];
-
-        $logoUrl = null;
-        $backgroundUrl = null;
-        foreach ($candidates as $candidate) {
-            if (!is_dir($candidate['dir'])) {
-                continue;
-            }
-            if ($logoUrl === null) {
-                foreach ($logoCandidates as $file) {
-                    $full = $candidate['dir'] . $file;
-                    if (is_file($full)) {
-                        $logoUrl = $candidate['url'] . $file . '?v=' . ((string) (@filemtime($full) ?: time()));
-                        break;
-                    }
-                }
-            }
-            if ($backgroundUrl === null) {
-                foreach ($backgroundCandidates as $file) {
-                    $full = $candidate['dir'] . $file;
-                    if (is_file($full)) {
-                        $backgroundUrl = $candidate['url'] . $file . '?v=' . ((string) (@filemtime($full) ?: time()));
-                        break;
-                    }
-                }
-            }
-        }
-
+        $branding = $this->resolveTenantBrandingAssets($codigo);
         return [
-            'logo' => $logoUrl,
-            'background' => $backgroundUrl,
+            'logo' => $branding['logo'],
+            'background' => $branding['background'],
         ];
     }
 
@@ -182,6 +145,8 @@ class Home extends BaseController
         }
 
         $tenant->activate($cliente);
+        $branding = $this->resolveTenantBrandingAssets((string) ($cliente['codigo'] ?? ''));
+        session()->set('tenant_logo_url', (string) ($branding['logo'] ?? ''));
 
         return $this->index();
     }

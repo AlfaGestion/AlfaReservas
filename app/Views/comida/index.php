@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= esc($cliente['razon_social'] ?? 'Portal pedidos') ?></title>
-    <link rel="icon" href="<?= base_url('alfa.png') ?>" type="image/png">
+    <link rel="icon" href="<?= base_url('favicon-32x32.png?v=20260317a') ?>" sizes="32x32" type="image/png">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="<?= base_url(PUBLIC_FOLDER . "assets/css/theme.css") ?>">
     <style>
@@ -221,7 +221,7 @@
 <body>
     <div class="container py-4">
         <div class="portal-header">
-            <img class="portal-logo" src="<?= esc((string) (($branding['logo'] ?? '') !== '' ? $branding['logo'] : base_url('alfa.png'))) ?>" alt="Logo">
+            <img class="portal-logo" src="<?= esc((string) (($branding['logo'] ?? '') !== '' ? $branding['logo'] : base_url(PUBLIC_FOLDER . 'assets/images/logo.png'))) ?>" alt="Logo">
         </div>
 
         <?php if (session('msg')) : ?>

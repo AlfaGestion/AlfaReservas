@@ -123,6 +123,8 @@
                             'currentPlan' => $currentPlan ?? null,
                             'planes' => $clientPlanOptions ?? [],
                             'clientAccessUser' => $clientAccessUser ?? null,
+                            'clientSetupConfig' => $clientSetupConfig ?? [],
+                            'openClientSetup' => $openClientSetup ?? false,
                         ]) ?>
                     <?php else : ?>
                         <?= view('superadmin/tabCustomers', [
@@ -167,6 +169,8 @@
 <?php if ($isClientScoped ?? false) : ?>
     <script src="<?= base_url(PUBLIC_FOLDER . "assets/js/superadminClientProfile.js?v=" . time()) ?>"></script>
     <script>
+        var openClientSetupOnLoad = <?= !empty($openClientSetup) ? 'true' : 'false' ?>;
+
         function toggleClientScopedBlocks(showUsers) {
             var generalBlock = document.getElementById('cp_general_block');
             var usersBlock = document.getElementById('cp_users_block');
@@ -201,6 +205,14 @@
         });
 
         document.addEventListener('DOMContentLoaded', function () {
+            if (openClientSetupOnLoad) {
+                var webTab = document.getElementById('nav-webconfig-top-tab');
+                if (webTab && window.bootstrap && bootstrap.Tab) {
+                    bootstrap.Tab.getOrCreateInstance(webTab).show();
+                }
+                toggleClientScopedBlocks('webconfig');
+                return;
+            }
             toggleClientScopedBlocks('profile');
         });
     </script>

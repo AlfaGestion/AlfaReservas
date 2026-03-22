@@ -134,6 +134,7 @@ $routes->group('', ['filter' => 'auth'], function ($routes) {
     $routes->post('saveField', 'Superadmin::saveField');
     $routes->get('([A-Za-z0-9_]+)/admin', 'Superadmin::index');
     $routes->post('editField/(:any)', 'Superadmin::editField/$1');
+    $routes->post('deleteField/(:any)', 'Superadmin::deleteField/$1');
     $routes->post('getActiveBookings', 'Superadmin::getActiveBookings');
     $routes->post('getAnnulledBookings', 'Superadmin::getAnnulledBookings');
     $routes->post('checkCancelReservations', 'Superadmin::checkCancelReservations');
@@ -155,6 +156,7 @@ $routes->group('', ['filter' => 'auth'], function ($routes) {
     $routes->post('saveOwnClientPasswordAjax', 'Superadmin::saveOwnClientPasswordAjax');
     $routes->post('addClientBaseUserAjax', 'Superadmin::addClientBaseUserAjax');
     $routes->post('saveClientPlanAjax', 'Superadmin::saveClientPlanAjax');
+    $routes->post('saveClientSetupAjax', 'Superadmin::saveClientSetupAjax');
     $routes->post('saveRubro', 'Superadmin::saveRubro');
     $routes->post('savePlan', 'Superadmin::savePlan');
     $routes->post('saveRubroParametro', 'Superadmin::saveRubroParametro');

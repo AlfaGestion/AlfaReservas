@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Seguimiento de pedido</title>
-    <link rel="icon" href="<?= base_url('alfa.png') ?>" type="image/png">
+    <link rel="icon" href="<?= base_url('favicon-32x32.png?v=20260317a') ?>" sizes="32x32" type="image/png">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="<?= base_url(PUBLIC_FOLDER . "assets/css/theme.css") ?>">
 </head>
@@ -12,7 +12,7 @@
     <div class="container py-4">
         <div class="d-flex justify-content-between align-items-center mb-3">
             <h4 class="mb-0">Seguimiento de pedido</h4>
-            <img src="<?= esc((string) (($branding['logo'] ?? '') !== '' ? $branding['logo'] : base_url('alfa.png'))) ?>" alt="Logo" style="max-height:52px;max-width:180px;">
+            <img src="<?= esc((string) (($branding['logo'] ?? '') !== '' ? $branding['logo'] : base_url(PUBLIC_FOLDER . 'assets/images/logo.png'))) ?>" alt="Logo" style="max-height:52px;max-width:180px;">
         </div>
 
         <div class="card mb-3">

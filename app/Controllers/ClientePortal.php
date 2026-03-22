@@ -89,31 +89,12 @@ class ClientePortal extends BaseController
 
     private function getBranding(string $codigo): array
     {
-        $tenantDir = FCPATH . 'assets/tenants/' . $codigo . '/';
-        $logoCandidates = ['logo.png', 'logo.jpg', 'logo.jpeg', 'logo.webp'];
-        $backgroundCandidates = ['fondo.jpg', 'fondo.png', 'fondo.webp', 'background.jpg', 'background.png', 'background.webp'];
-
-        $logoUrl = base_url('alfa.png');
-        foreach ($logoCandidates as $file) {
-            if (is_file($tenantDir . $file)) {
-                $logoUrl = base_url('assets/tenants/' . $codigo . '/' . $file);
-                break;
-            }
-        }
-
-        $backgroundUrl = null;
-        foreach ($backgroundCandidates as $file) {
-            if (is_file($tenantDir . $file)) {
-                $backgroundUrl = base_url('assets/tenants/' . $codigo . '/' . $file);
-                break;
-            }
-        }
+        $branding = $this->resolveTenantBrandingAssets($codigo);
 
         return [
-            'logo' => $logoUrl,
-            'background' => $backgroundUrl,
-            'tenantDir' => 'public/assets/tenants/' . $codigo . '/',
+            'logo' => (string) ($branding['logo'] ?? base_url('assets/images/logo.png')),
+            'background' => $branding['background'] ?? null,
+            'tenantDir' => (string) ($branding['tenantDir'] ?? ('public/' . $codigo . '/')),
         ];
     }
 }
-

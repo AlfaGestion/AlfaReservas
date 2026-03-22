@@ -83,8 +83,8 @@ function updateEstadoPreview() {
         .replace(/<plan>/gi, 'Pro')
         .replace(/<periodo>/gi, 'Mensual')
         .replace(/<dias_restantes>/gi, '4')
-        .replace(/<fecha_fin>/gi, '2026-03-02')
-        .replace(/<fecha_hoy>/gi, '2026-02-26');
+        .replace(/<fecha_fin>/gi, '02/03/2026')
+        .replace(/<fecha_hoy>/gi, '26/02/2026');
     preview.textContent = txt || '-';
 }
 

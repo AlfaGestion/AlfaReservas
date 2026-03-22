@@ -190,6 +190,7 @@ class Auth extends BaseController
         }
         $password = $this->request->getVar('password');
         $redirectPath = $this->sanitizeRedirectPath((string) $this->request->getVar('redirect'));
+        $onboardingSetup = (string) $this->request->getVar('onboarding_setup') === '1';
 
         $userData = $modelUsers
             ->groupStart()
@@ -215,6 +216,9 @@ class Auth extends BaseController
             $this->activateTenantForUser($userData);
 
             if ($redirectPath) {
+                if ($onboardingSetup) {
+                    session()->setFlashdata('open_client_setup', 1);
+                }
                 return redirect()->to($redirectPath);
             }
             $clienteAdminPath = $this->resolveClienteAdminPath($userData);

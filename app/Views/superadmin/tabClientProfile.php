@@ -151,8 +151,8 @@ $trialDaysLeft = isset($plan['trial_days_left']) ? (int) $plan['trial_days_left'
 
         <h6 class="mb-2">Mi acceso</h6>
         <div class="row g-2 mb-2">
-            <div class="col-md-6"><strong>Usuario (AlfaReserva):</strong> <?= esc((string) ($accessUser['user'] ?? '-')) ?></div>
-            <div class="col-md-6"><strong>Email (AlfaReserva):</strong> <?= esc((string) ($accessUser['email'] ?? '-')) ?></div>
+            <div class="col-md-6"><strong>Usuario (TURNOK):</strong> <?= esc((string) ($accessUser['user'] ?? '-')) ?></div>
+            <div class="col-md-6"><strong>Email (TURNOK):</strong> <?= esc((string) ($accessUser['email'] ?? '-')) ?></div>
         </div>
         <div class="row g-2">
             <div class="col-md-4">

@@ -102,23 +102,178 @@ function cpRecalcPlanEstimate() {
     totalEl.textContent = 'Total estimado: $' + cpMoney(estTotal) + (periodo === 'YEAR' ? ' / año' : ' / mes');
 }
 
-function cpRefreshLogoPreview() {
-    var input = document.getElementById('cp_logo_file');
+function cpRefreshLogoPreview(inputId, wrapId, imageId) {
+    var input = document.getElementById(inputId || 'cp_logo_file');
     if (!input || !input.files || !input.files.length) return;
-    var wrap = document.getElementById('cp_logo_preview_wrap');
+    var wrap = document.getElementById(wrapId || 'cp_logo_preview_wrap');
     if (!wrap) return;
-    var img = document.getElementById('cp_logo_preview');
+    var img = document.getElementById(imageId || 'cp_logo_preview');
     var objectUrl = URL.createObjectURL(input.files[0]);
     if (!img) {
-        wrap.innerHTML = '<img id="cp_logo_preview" alt="Logo cliente" style="max-height:80px;max-width:100%;">';
-        img = document.getElementById('cp_logo_preview');
+        wrap.innerHTML = '<img id="' + cpEsc(imageId || 'cp_logo_preview') + '" alt="Logo cliente" style="max-height:80px;max-width:100%;">';
+        img = document.getElementById(imageId || 'cp_logo_preview');
     }
     if (img) img.src = objectUrl;
+}
+
+function cpSyncAdvancedScheduleRow(row) {
+    if (!row) return;
+    var activeInput = row.querySelector('.cp-advanced-active');
+    var morningEnabled = row.querySelector('.cp-advanced-morning-enabled');
+    var afternoonEnabled = row.querySelector('.cp-advanced-afternoon-enabled');
+    var morningSlot = row.querySelector('[data-slot="morning"]');
+    var afternoonSlot = row.querySelector('[data-slot="afternoon"]');
+    var isActive = !!(activeInput && activeInput.checked);
+
+    if (morningEnabled) {
+        morningEnabled.disabled = !isActive;
+        if (!isActive) morningEnabled.checked = false;
+    }
+    if (afternoonEnabled) {
+        afternoonEnabled.disabled = !isActive;
+        if (!isActive) afternoonEnabled.checked = false;
+    }
+    if (morningSlot) {
+        morningSlot.classList.toggle('disabled', !isActive || !(morningEnabled && morningEnabled.checked));
+        Array.prototype.slice.call(morningSlot.querySelectorAll('select')).forEach(function (el) {
+            el.disabled = !isActive || !(morningEnabled && morningEnabled.checked);
+        });
+    }
+    if (afternoonSlot) {
+        afternoonSlot.classList.toggle('disabled', !isActive || !(afternoonEnabled && afternoonEnabled.checked));
+        Array.prototype.slice.call(afternoonSlot.querySelectorAll('select')).forEach(function (el) {
+            el.disabled = !isActive || !(afternoonEnabled && afternoonEnabled.checked);
+        });
+    }
+}
+
+function cpCollectAdvancedSchedule() {
+    var payload = {};
+    Array.prototype.slice.call(document.querySelectorAll('[data-advanced-day]')).forEach(function (row) {
+        var day = row.getAttribute('data-advanced-day') || '';
+        if (!day) return;
+        payload[day] = {
+            active: !!((row.querySelector('.cp-advanced-active') || {}).checked),
+            morning_enabled: !!((row.querySelector('.cp-advanced-morning-enabled') || {}).checked),
+            morning_from: (row.querySelector('.cp-advanced-morning-from') || {}).value || '',
+            morning_until: (row.querySelector('.cp-advanced-morning-until') || {}).value || '',
+            afternoon_enabled: !!((row.querySelector('.cp-advanced-afternoon-enabled') || {}).checked),
+            afternoon_from: (row.querySelector('.cp-advanced-afternoon-from') || {}).value || '',
+            afternoon_until: (row.querySelector('.cp-advanced-afternoon-until') || {}).value || ''
+        };
+    });
+    return payload;
+}
+
+function cpSyncAdvancedWithTopDays(scopeRoot) {
+    var root = scopeRoot || document;
+    var selectedDays = {};
+    Array.prototype.slice.call(root.querySelectorAll('input[name="cp_open_days"]:checked')).forEach(function (node) {
+        selectedDays[String(node.value || '')] = true;
+    });
+
+    Array.prototype.slice.call(root.querySelectorAll('[data-advanced-day]')).forEach(function (row) {
+        var day = String(row.getAttribute('data-advanced-day') || '');
+        var activeInput = row.querySelector('.cp-advanced-active');
+        if (!activeInput) return;
+
+        if (selectedDays[day]) {
+            if (!activeInput.checked) {
+                activeInput.checked = true;
+            }
+        } else {
+            activeInput.checked = false;
+            var morningEnabled = row.querySelector('.cp-advanced-morning-enabled');
+            var afternoonEnabled = row.querySelector('.cp-advanced-afternoon-enabled');
+            if (morningEnabled) morningEnabled.checked = false;
+            if (afternoonEnabled) afternoonEnabled.checked = false;
+        }
+
+        cpSyncAdvancedScheduleRow(row);
+    });
+}
+
+function cpApplyAdvancedGlobal(box, action) {
+    if (!box) return;
+    var morningFrom = (box.querySelector('[data-advanced-global="morning-from"]') || {}).value || '';
+    var morningUntil = (box.querySelector('[data-advanced-global="morning-until"]') || {}).value || '';
+    var afternoonFrom = (box.querySelector('[data-advanced-global="afternoon-from"]') || {}).value || '';
+    var afternoonUntil = (box.querySelector('[data-advanced-global="afternoon-until"]') || {}).value || '';
+    var morningEnabledAll = !!((box.querySelector('[data-advanced-global="morning-enabled-all"]') || {}).checked);
+    var afternoonEnabledAll = !!((box.querySelector('[data-advanced-global="afternoon-enabled-all"]') || {}).checked);
+
+    Array.prototype.slice.call(box.querySelectorAll('[data-advanced-day]')).forEach(function (row) {
+        var activeInput = row.querySelector('.cp-advanced-active');
+        var morningEnabled = row.querySelector('.cp-advanced-morning-enabled');
+        var afternoonEnabled = row.querySelector('.cp-advanced-afternoon-enabled');
+        var morningFromEl = row.querySelector('.cp-advanced-morning-from');
+        var morningUntilEl = row.querySelector('.cp-advanced-morning-until');
+        var afternoonFromEl = row.querySelector('.cp-advanced-afternoon-from');
+        var afternoonUntilEl = row.querySelector('.cp-advanced-afternoon-until');
+
+        if (action === 'check-all') {
+            if (activeInput) activeInput.checked = true;
+            if (morningEnabled) morningEnabled.checked = true;
+            if (afternoonEnabled) afternoonEnabled.checked = true;
+        }
+        if (action === 'uncheck-all') {
+            if (activeInput) activeInput.checked = false;
+            if (morningEnabled) morningEnabled.checked = false;
+            if (afternoonEnabled) afternoonEnabled.checked = false;
+        }
+        if (!action) {
+            if (activeInput) {
+                activeInput.checked = morningEnabledAll || afternoonEnabledAll;
+            }
+            if (morningEnabled) {
+                morningEnabled.checked = morningEnabledAll && !!(activeInput && activeInput.checked);
+            }
+            if (afternoonEnabled) {
+                afternoonEnabled.checked = afternoonEnabledAll && !!(activeInput && activeInput.checked);
+            }
+        }
+
+        if (morningFromEl && morningFrom) morningFromEl.value = morningFrom;
+        if (morningUntilEl && morningUntil) morningUntilEl.value = morningUntil;
+        if (afternoonFromEl && afternoonFrom) afternoonFromEl.value = afternoonFrom;
+        if (afternoonUntilEl && afternoonUntil) afternoonUntilEl.value = afternoonUntil;
+
+        cpSyncAdvancedScheduleRow(row);
+    });
 }
 
 document.addEventListener('click', async function (e) {
     var t = e.target ? (e.target.closest('button') || e.target) : null;
     if (!t) return;
+
+    var dayChip = e.target && e.target.closest ? e.target.closest('.cp-setup-day, .cp-websetup-day') : null;
+    if (dayChip && !dayChip.closest('button')) {
+        var dayInput = dayChip.querySelector('input[type="checkbox"]');
+        if (dayInput && e.target !== dayInput) {
+            e.preventDefault();
+            dayInput.checked = !dayInput.checked;
+        }
+        return;
+    }
+
+    var advancedToggle = e.target && e.target.closest ? e.target.closest('[data-advanced-toggle]') : null;
+    if (advancedToggle) {
+        var advancedBox = advancedToggle.closest('.cp-advanced-schedule, .cp-websetup-advanced');
+        var advancedBody = advancedBox ? advancedBox.querySelector('[data-advanced-body]') : null;
+        if (advancedBody) {
+            var nextOpen = !advancedBody.classList.contains('is-open');
+            advancedBody.classList.toggle('is-open', nextOpen);
+            advancedToggle.setAttribute('aria-expanded', nextOpen ? 'true' : 'false');
+        }
+        return;
+    }
+
+    var advancedAction = e.target && e.target.closest ? e.target.closest('[data-advanced-action]') : null;
+    if (advancedAction) {
+        var advancedActionBox = advancedAction.closest('.cp-advanced-schedule, .cp-websetup-advanced');
+        cpApplyAdvancedGlobal(advancedActionBox, advancedAction.getAttribute('data-advanced-action') || '');
+        return;
+    }
 
     if (t.id === 'saveClientProfileBtn') {
         var id = (document.getElementById('cp_id') || {}).value || '';
@@ -219,10 +374,103 @@ document.addEventListener('click', async function (e) {
             var data2 = await res2.json();
             if (!res2.ok || data2.error) return cpToast(data2.message || 'No se pudo guardar logo.', 'danger');
             cpToast(data2.message || 'Logo actualizado.', 'success');
-            cpRefreshLogoPreview();
+            cpRefreshLogoPreview('cp_logo_file', 'cp_logo_preview_wrap', 'cp_logo_preview');
             fileInput.value = '';
         } catch (_) {
             cpToast('No se pudo guardar logo.', 'danger');
+        }
+        return;
+    }
+
+    if (t.id === 'saveClientSetupLogoBtn') {
+        var id2b = (document.getElementById('cp_id') || {}).value || '';
+        var fileInput2 = document.getElementById('cp_setup_logo_file');
+        if (!fileInput2 || !fileInput2.files || !fileInput2.files.length) {
+            return cpToast('Selecciona un logo.', 'danger');
+        }
+        var fd2b = new FormData();
+        fd2b.append('id', id2b);
+        fd2b.append('logo', fileInput2.files[0]);
+        try {
+            var res2b = await fetch(baseUrl + 'saveClientLogoAjax', {
+                method: 'POST',
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                body: fd2b
+            });
+            var data2b = await res2b.json();
+            if (!res2b.ok || data2b.error) return cpToast(data2b.message || 'No se pudo guardar logo.', 'danger');
+            cpToast(data2b.message || 'Logo actualizado.', 'success');
+            cpRefreshLogoPreview('cp_setup_logo_file', 'cp_setup_logo_preview_wrap', 'cp_setup_logo_preview');
+            fileInput2.value = '';
+        } catch (_) {
+            cpToast('No se pudo guardar logo.', 'danger');
+        }
+        return;
+    }
+
+    if (t.id === 'saveClientSetupBtn') {
+        var idSetup = (document.getElementById('cp_id') || {}).value || '';
+        var dismissCheckbox = document.getElementById('cp_setup_dismiss');
+        var fdSetup = new FormData();
+        fdSetup.append('id', idSetup);
+        fdSetup.append('site_title', (document.getElementById('cp_site_title') || {}).value || '');
+        fdSetup.append('service_name', (document.getElementById('cp_service_name') || {}).value || '');
+        fdSetup.append('reservation_email', (document.getElementById('cp_reservation_email') || {}).value || '');
+        fdSetup.append('open_from', (document.getElementById('cp_open_from') || {}).value || '');
+        fdSetup.append('open_until', (document.getElementById('cp_open_until') || {}).value || '');
+        fdSetup.append('primary_color', (document.getElementById('cp_primary_color') || {}).value || '');
+        fdSetup.append('accent_color', (document.getElementById('cp_accent_color') || {}).value || '');
+        fdSetup.append('advanced_schedule_json', JSON.stringify(cpCollectAdvancedSchedule()));
+        fdSetup.append('dismiss_prompt', dismissCheckbox && dismissCheckbox.checked ? '1' : '0');
+        Array.prototype.slice.call(document.querySelectorAll('input[name="cp_open_days"]:checked')).forEach(function (node) {
+            fdSetup.append('open_days[]', node.value || '');
+        });
+        try {
+            var resSetup = await fetch(baseUrl + 'saveClientSetupAjax', {
+                method: 'POST',
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                body: fdSetup
+            });
+            var dataSetup = await resSetup.json();
+            if (!resSetup.ok || dataSetup.error) return cpToast(dataSetup.message || 'No se pudo guardar la configuracion.', 'danger');
+            cpToast(dataSetup.message || 'Configuracion actualizada.', 'success');
+            if (dismissCheckbox && dismissCheckbox.checked) {
+                var currentFrame = t.closest('.cp-setup-frame, .cp-websetup-frame');
+                if (currentFrame) {
+                    currentFrame.style.display = 'none';
+                }
+            }
+        } catch (_) {
+            cpToast('No se pudo guardar la configuracion.', 'danger');
+        }
+        return;
+    }
+
+    if (t.id === 'dismissClientSetupBtn') {
+        var idDismiss = (document.getElementById('cp_id') || {}).value || '';
+        var dismissCheckboxOnly = document.getElementById('cp_setup_dismiss');
+        if (!dismissCheckboxOnly || !dismissCheckboxOnly.checked) {
+            return cpToast('Tilda "No volver a mostrar" antes de ocultar el recordatorio.', 'danger');
+        }
+        var fdDismiss = new FormData();
+        fdDismiss.append('id', idDismiss);
+        fdDismiss.append('dismiss_only', '1');
+        fdDismiss.append('dismiss_prompt', '1');
+        try {
+            var resDismiss = await fetch(baseUrl + 'saveClientSetupAjax', {
+                method: 'POST',
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                body: fdDismiss
+            });
+            var dataDismiss = await resDismiss.json();
+            if (!resDismiss.ok || dataDismiss.error) return cpToast(dataDismiss.message || 'No se pudo ocultar el recordatorio.', 'danger');
+            cpToast(dataDismiss.message || 'Recordatorio oculto.', 'success');
+            var setupFrame = t.closest('.cp-setup-frame, .cp-websetup-frame');
+            if (setupFrame) {
+                setupFrame.style.display = 'none';
+            }
+        } catch (_) {
+            cpToast('No se pudo ocultar el recordatorio.', 'danger');
         }
         return;
     }
@@ -287,6 +535,28 @@ document.addEventListener('input', function (e) {
     }
 });
 
+document.addEventListener('change', function (e) {
+    if (!e.target) return;
+    if (e.target.id === 'cp_logo_file') {
+        cpRefreshLogoPreview('cp_logo_file', 'cp_logo_preview_wrap', 'cp_logo_preview');
+    }
+    if (e.target.id === 'cp_setup_logo_file') {
+        cpRefreshLogoPreview('cp_setup_logo_file', 'cp_setup_logo_preview_wrap', 'cp_setup_logo_preview');
+    }
+    var advancedRow = e.target.closest ? e.target.closest('[data-advanced-day]') : null;
+    if (advancedRow) {
+        cpSyncAdvancedScheduleRow(advancedRow);
+    }
+    if (e.target.name === 'cp_open_days') {
+        var scopeRoot = e.target.closest ? (e.target.closest('.cp-setup-frame, .cp-websetup-frame') || document) : document;
+        cpSyncAdvancedWithTopDays(scopeRoot);
+    }
+    var advancedBox = e.target.closest ? e.target.closest('.cp-advanced-schedule, .cp-websetup-advanced') : null;
+    if (advancedBox && e.target.matches && e.target.matches('[data-advanced-global]')) {
+        cpApplyAdvancedGlobal(advancedBox, '');
+    }
+});
+
 document.addEventListener('DOMContentLoaded', function () {
     var profileForm = document.getElementById('clientProfileForm');
     if (profileForm) {
@@ -296,4 +566,13 @@ document.addEventListener('DOMContentLoaded', function () {
     }
     cpUpdateUsersQuota(null);
     cpRecalcPlanEstimate();
+    Array.prototype.slice.call(document.querySelectorAll('[data-advanced-day]')).forEach(cpSyncAdvancedScheduleRow);
+    Array.prototype.slice.call(document.querySelectorAll('.cp-setup-frame, .cp-websetup-frame')).forEach(cpSyncAdvancedWithTopDays);
+    Array.prototype.slice.call(document.querySelectorAll('.cp-advanced-schedule, .cp-websetup-advanced')).forEach(function (box) {
+        var body = box.querySelector('[data-advanced-body]');
+        var toggle = box.querySelector('[data-advanced-toggle]');
+        if (!body || !toggle) return;
+        body.classList.remove('is-open');
+        toggle.setAttribute('aria-expanded', 'false');
+    });
 });

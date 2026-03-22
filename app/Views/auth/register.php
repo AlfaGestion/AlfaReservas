@@ -12,18 +12,57 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-rbsA2VBKQhggwzxH7pPCaAqO46MgnOM80zW1RWuH61DGLwZJEdK2Kadq2F9CUG65" crossorigin="anonymous">
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-kenU1KFdBIe4zVF0s0G1M5b4hcpxyD9F7jL+jjXkk+Q2h455rYXK/7HAuoJl+0I4" crossorigin="anonymous"></script>
     <script src="https://kit.fontawesome.com/9bae38f407.js" crossorigin="anonymous"></script>
-    <link rel="icon" href="<?= base_url('alfa.png') ?>" type="image/png">
+    <link rel="icon" href="<?= base_url('favicon-32x32.png?v=20260317a') ?>" sizes="32x32" type="image/png">
+    <style>
+        @font-face {
+            font-family:'Quicksand';
+            src:url('<?= base_url(PUBLIC_FOLDER . "assets/fonts/turnok/Quicksand-Regular.ttf") ?>') format('truetype');
+            font-weight:400;
+            font-style:normal;
+        }
+        @font-face {
+            font-family:'Quicksand';
+            src:url('<?= base_url(PUBLIC_FOLDER . "assets/fonts/turnok/Quicksand-Medium.ttf") ?>') format('truetype');
+            font-weight:500;
+            font-style:normal;
+        }
+        @font-face {
+            font-family:'Quicksand';
+            src:url('<?= base_url(PUBLIC_FOLDER . "assets/fonts/turnok/Quicksand-SemiBold.ttf") ?>') format('truetype');
+            font-weight:600;
+            font-style:normal;
+        }
+        @font-face {
+            font-family:'Quicksand';
+            src:url('<?= base_url(PUBLIC_FOLDER . "assets/fonts/turnok/Quicksand-Bold.ttf") ?>') format('truetype');
+            font-weight:700;
+            font-style:normal;
+        }
+        body,
+        body * {
+            font-family:'Quicksand',sans-serif !important;
+        }
+    </style>
 
 
 </head>
 
 <body style="background-color: #f8f9fa;">
+    <script>
+        (function () {
+            try {
+                if (localStorage.getItem('alfa_theme') === 'dark') {
+                    document.body.classList.add('theme-dark');
+                }
+            } catch (e) {}
+        })();
+    </script>
     <div class="container login-page d-flex justify-content-center align-items-center">
         <div class="login-box">
 
             <div class="login-box-body">
                 <div class="login-logo d-flex justify-content-center align-items-center">
-                    <a href="<?= base_url() ?>"><img src="<?= base_url('alfa.png') ?>" width="200px" alt="Alfa"></a>
+                    <a href="<?= base_url() ?>"><img src="<?= base_url(PUBLIC_FOLDER . "assets/images/logo-shadow.png") ?>" width="200px" alt="TURNOK"></a>
                 </div>
 
                 <select class="form-select mt-3 mb-3" name="users" id="selectUser" aria-label="Select Usuarios">

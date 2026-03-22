@@ -13,7 +13,7 @@
     echo $this->renderSection('title') ?>
     <title>Home</title>
 
-    <link rel="icon" href="<?= base_url('alfa.png') ?>" type="image/png">
+    <link rel="icon" href="<?= base_url('favicon-32x32.png?v=20260317a') ?>" sizes="32x32" type="image/png">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-rbsA2VBKQhggwzxH7pPCaAqO46MgnOM80zW1RWuH61DGLwZJEdK2Kadq2F9CUG65" crossorigin="anonymous">
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-kenU1KFdBIe4zVF0s0G1M5b4hcpxyD9F7jL+jjXkk+Q2h455rYXK/7HAuoJl+0I4" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.6/dist/umd/popper.min.js" integrity="sha384-oBqDVmMz9ATKxIep9tiCxS/Z9fNfEXiDAYTujMAeBAsjFuCZSmKbSSUnQlmh/jp3" crossorigin="anonymous"></script>
@@ -28,22 +28,42 @@ $modelUploads = new UploadModel();
 $userBackground = $modelUploads->first();
 $tenantCodigo = (string) (session()->get('tenant_codigo') ?? '');
 
-$tenantDir = FCPATH . 'assets/tenants/' . $tenantCodigo . '/';
 $tenantLogo = null;
 $tenantBackground = null;
 
-if ($tenantCodigo !== '' && is_dir($tenantDir)) {
-    foreach (['logo.png', 'logo.jpg', 'logo.jpeg', 'logo.webp'] as $logoFile) {
-        if (is_file($tenantDir . $logoFile)) {
-            $tenantLogo = base_url(PUBLIC_FOLDER . 'assets/tenants/' . $tenantCodigo . '/' . $logoFile);
-            break;
-        }
-    }
+if ($tenantCodigo !== '') {
+    $brandingCandidates = [
+        [
+            'dir' => FCPATH . $tenantCodigo . DIRECTORY_SEPARATOR,
+            'url' => base_url(PUBLIC_FOLDER . $tenantCodigo . '/'),
+        ],
+        [
+            'dir' => FCPATH . 'assets/tenants/' . $tenantCodigo . '/',
+            'url' => base_url(PUBLIC_FOLDER . 'assets/tenants/' . $tenantCodigo . '/'),
+        ],
+    ];
 
-    foreach (['fondo.jpg', 'fondo.png', 'fondo.webp', 'background.jpg', 'background.png', 'background.webp'] as $bgFile) {
-        if (is_file($tenantDir . $bgFile)) {
-            $tenantBackground = base_url(PUBLIC_FOLDER . 'assets/tenants/' . $tenantCodigo . '/' . $bgFile);
-            break;
+    foreach ($brandingCandidates as $candidate) {
+        if (!is_dir($candidate['dir'])) {
+            continue;
+        }
+
+        if ($tenantLogo === null) {
+            foreach (['logo.png', 'logo.jpg', 'logo.jpeg', 'logo.webp', 'LOGO.png', 'LOGO.jpg', 'LOGO.jpeg', 'LOGO.webp'] as $logoFile) {
+                if (is_file($candidate['dir'] . $logoFile)) {
+                    $tenantLogo = $candidate['url'] . $logoFile . '?v=' . ((string) (@filemtime($candidate['dir'] . $logoFile) ?: time()));
+                    break;
+                }
+            }
+        }
+
+        if ($tenantBackground === null) {
+            foreach (['fondo.jpg', 'fondo.png', 'fondo.webp', 'background.jpg', 'background.png', 'background.webp'] as $bgFile) {
+                if (is_file($candidate['dir'] . $bgFile)) {
+                    $tenantBackground = $candidate['url'] . $bgFile . '?v=' . ((string) (@filemtime($candidate['dir'] . $bgFile) ?: time()));
+                    break;
+                }
+            }
         }
     }
 }
@@ -64,7 +84,7 @@ if ($tenantCodigo !== '' && is_dir($tenantDir)) {
             <nav class="navbar navbar-expand-lg" style="background: url(<?= $tenantBackground ? $tenantBackground : base_url(PUBLIC_FOLDER . "assets/images/uploads/" . $userBackground['name']) ?>);">
             <?php else : ?>
 
-                <nav class="navbar navbar-expand-lg" style="background-color: #ffffff;">
+                <nav class="navbar navbar-expand-lg" style="background:linear-gradient(135deg,#1e1e1e 0%,#165ecc 100%); border-bottom:1px solid #b1d4f0;">
                 <?php endif; ?>
 
                 <div class="container-fluid">
@@ -101,13 +121,13 @@ if ($tenantCodigo !== '' && is_dir($tenantDir)) {
 
                         <div class="mx-auto d-lg-none"> <!-- Centra en dispositivos móviles -->
                             <a class="navbar-brand" href="<?= base_url() ?>">
-                                <img src="<?= base_url('alfa.png') ?>" width="110" alt="Alfa">
+                                <img src="<?= base_url(PUBLIC_FOLDER . "assets/images/logo.png") ?>" width="110" alt="TURNOK">
                             </a>
                         </div>
 
                         <div class="mx-auto d-none d-lg-block"> <!-- Centra en pantalla grande -->
                             <a class="navbar-brand" href="<?= base_url() ?>">
-                                <img src="<?= base_url('alfa.png') ?>" width="110" alt="Alfa">
+                                <img src="<?= base_url(PUBLIC_FOLDER . "assets/images/logo.png") ?>" width="110" alt="TURNOK">
                             </a>
                         </div>
                     <?php endif; ?>
@@ -146,7 +166,7 @@ if ($tenantCodigo !== '' && is_dir($tenantDir)) {
                         <?php endif; ?>
 
                         <div class="link d-flex justify-content-center align-items-center">
-                            <a href="https://alfagestion.com.ar/" target="_blank" class="text-center text-muted">© 2023 - Alfanet</a>
+                            <a href="<?= base_url() ?>" class="text-center text-muted">© 2026 - TURNOK</a>
                         </div>
                     </footer>
                 </div>

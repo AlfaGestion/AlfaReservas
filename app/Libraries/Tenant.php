@@ -7,6 +7,11 @@ use DateTimeImmutable;
 
 class Tenant
 {
+    private function formatDisplayDate(DateTimeImmutable $date): string
+    {
+        return $date->format(defined('APP_DATE_FORMAT') ? (string) APP_DATE_FORMAT : 'd/m/Y');
+    }
+
     private function parseDate(?string $value): ?DateTimeImmutable
     {
         $value = trim((string) $value);
@@ -165,8 +170,8 @@ class Tenant
                     'plan' => (string) ($cliente['plan_nombre'] ?? '-'),
                     'periodo' => $this->periodoLabel((string) ($cliente['contrato_periodo'] ?? '')),
                     'dias_restantes' => (string) $daysRemaining,
-                    'fecha_fin' => $trialEnd->format('Y-m-d'),
-                    'fecha_hoy' => $now->format('Y-m-d'),
+                    'fecha_fin' => $this->formatDisplayDate($trialEnd),
+                    'fecha_hoy' => $this->formatDisplayDate($now),
                 ]);
             }
         }
@@ -202,8 +207,8 @@ class Tenant
                     'plan' => (string) ($cliente['plan_nombre'] ?? '-'),
                     'periodo' => $this->periodoLabel((string) ($cliente['contrato_periodo'] ?? '')),
                     'dias_restantes' => (string) $daysRemaining,
-                    'fecha_fin' => $graceEnd->format('Y-m-d'),
-                    'fecha_hoy' => $now->format('Y-m-d'),
+                    'fecha_fin' => $this->formatDisplayDate($graceEnd),
+                    'fecha_hoy' => $this->formatDisplayDate($now),
                 ]);
             }
         }
@@ -228,8 +233,8 @@ class Tenant
                     'plan' => (string) ($cliente['plan_nombre'] ?? '-'),
                     'periodo' => $this->periodoLabel((string) ($cliente['contrato_periodo'] ?? '')),
                     'dias_restantes' => (string) $daysRemaining,
-                    'fecha_fin' => $readOnlyEnd->format('Y-m-d'),
-                    'fecha_hoy' => $now->format('Y-m-d'),
+                    'fecha_fin' => $this->formatDisplayDate($readOnlyEnd),
+                    'fecha_hoy' => $this->formatDisplayDate($now),
                 ]);
             }
         }
@@ -243,8 +248,8 @@ class Tenant
                 'plan' => (string) ($cliente['plan_nombre'] ?? '-'),
                 'periodo' => $this->periodoLabel((string) ($cliente['contrato_periodo'] ?? '')),
                 'dias_restantes' => '0',
-                'fecha_fin' => $now->format('Y-m-d'),
-                'fecha_hoy' => $now->format('Y-m-d'),
+                'fecha_fin' => $this->formatDisplayDate($now),
+                'fecha_hoy' => $this->formatDisplayDate($now),
             ]);
         }
 

@@ -978,6 +978,8 @@ class Superadmin extends BaseController
         $clientUsers = [];
         $currentPlan = null;
         $clientAccessUser = null;
+        $clientSetupConfig = [];
+        $openClientSetup = false;
         $usersFromTenant = false;
         if ($isClientScoped && is_array($empresaPrincipal)) {
             $clientProfile = $empresaPrincipal;
@@ -1034,6 +1036,21 @@ class Superadmin extends BaseController
                     ];
                 }
             }
+
+            $clientSetupConfig = $this->getClientSetupConfig((int) ($empresaPrincipal['id'] ?? 0), [
+                'site_title' => (string) ($empresaPrincipal['razon_social'] ?? ''),
+                'service_name' => 'Reservas',
+                'reservation_email' => trim((string) (($clientAccessUser['email'] ?? ($empresaPrincipal['email'] ?? '')))),
+                'open_days' => json_encode(['1', '2', '3', '4', '5', '6']),
+                'open_from' => (string) (($time['from'] ?? '') !== '' ? $time['from'] : '08'),
+                'open_until' => (string) (($time['until'] ?? '') !== '' ? $time['until'] : '22'),
+                'advanced_schedule_json' => '',
+                'primary_color' => '#165ECC',
+                'accent_color' => '#E3F50D',
+                'setup_completed' => '0',
+                'setup_dismissed' => '0',
+            ]);
+            $openClientSetup = $this->shouldPromptClientSetup($clientSetupConfig, $resolvedLogoUrl);
         }
         if (!$isClientScoped) {
             session()->remove('tenant_logo_url');
@@ -1082,6 +1099,8 @@ class Superadmin extends BaseController
             'currentPlan' => $currentPlan,
             'clientPlanOptions' => $planes,
             'clientAccessUser' => $clientAccessUser,
+            'clientSetupConfig' => $clientSetupConfig,
+            'openClientSetup' => $openClientSetup,
         ]);
     }
 
@@ -1166,6 +1185,28 @@ class Superadmin extends BaseController
         }
 
         return redirect()->to('abmAdmin')->with('msg', ['type' => 'success', 'body' => 'Cancha editada correctamente']);
+    }
+
+    public function deleteField($id)
+    {
+        $fieldsModel = new FieldsModel();
+
+        if (empty($id)) {
+            return redirect()->to('abmAdmin')->with('msg', ['type' => 'danger', 'body' => 'Cancha invalida']);
+        }
+
+        try {
+            $field = $fieldsModel->find($id);
+            if (!$field) {
+                return redirect()->to('abmAdmin')->with('msg', ['type' => 'danger', 'body' => 'La cancha no existe']);
+            }
+
+            $fieldsModel->delete($id);
+        } catch (\Throwable $e) {
+            return redirect()->to('abmAdmin')->with('msg', ['type' => 'danger', 'body' => 'No se pudo borrar la cancha: ' . $e->getMessage()]);
+        }
+
+        return redirect()->to('abmAdmin')->with('msg', ['type' => 'success', 'body' => 'Cancha borrada correctamente']);
     }
 
     public function getActiveBookings()
@@ -1613,6 +1654,223 @@ class Superadmin extends BaseController
             'msg_grace' => 'Estas en periodo de gracia. Te quedan <dias_restantes> dia(s) para regularizar el plan.',
             'msg_read_only' => 'Modo solo lectura activo. Te quedan <dias_restantes> dia(s) antes de la suspension.',
             'msg_suspended' => 'Tu cuenta esta suspendida por falta de pago. Contacta al administrador para reactivarla.',
+        ];
+    }
+
+    private function getClientSetupConfig(int $clienteId, array $defaults = []): array
+    {
+        if ($clienteId <= 0) {
+            return $defaults;
+        }
+
+        $this->ensureClienteEstadoConfigTable();
+        $db = Database::connect('alfareserva');
+        $keys = array_keys($defaults);
+        if (empty($keys)) {
+            return $defaults;
+        }
+
+        $rows = $db->table('cliente_configuracion')
+            ->select('clave, valor')
+            ->where('cliente_id', $clienteId)
+            ->whereIn('clave', $keys)
+            ->get()
+            ->getResultArray();
+
+        $config = $defaults;
+        foreach ($rows as $row) {
+            $key = (string) ($row['clave'] ?? '');
+            if ($key === '' || !array_key_exists($key, $config)) {
+                continue;
+            }
+            $config[$key] = (string) ($row['valor'] ?? $config[$key]);
+        }
+
+        return $config;
+    }
+
+    private function saveClientConfigValues(int $clienteId, array $values): void
+    {
+        if ($clienteId <= 0 || empty($values)) {
+            return;
+        }
+
+        $this->ensureClienteEstadoConfigTable();
+        $db = Database::connect('alfareserva');
+        $table = $db->table('cliente_configuracion');
+
+        foreach ($values as $key => $value) {
+            $existing = $table->select('id')
+                ->where('cliente_id', $clienteId)
+                ->where('clave', $key)
+                ->get()
+                ->getRowArray();
+
+            if ($existing) {
+                $table->where('id', (int) $existing['id'])->update(['valor' => (string) $value]);
+            } else {
+                $table->insert([
+                    'cliente_id' => $clienteId,
+                    'clave' => (string) $key,
+                    'valor' => (string) $value,
+                ]);
+            }
+        }
+    }
+
+    private function shouldPromptClientSetup(array $setupConfig, string $logoUrl = ''): bool
+    {
+        if (trim((string) ($setupConfig['setup_dismissed'] ?? '0')) === '1') {
+            return false;
+        }
+
+        $siteTitle = trim((string) ($setupConfig['site_title'] ?? ''));
+        $serviceName = trim((string) ($setupConfig['service_name'] ?? ''));
+        $reservationEmail = trim((string) ($setupConfig['reservation_email'] ?? ''));
+        $openFrom = trim((string) ($setupConfig['open_from'] ?? ''));
+        $openUntil = trim((string) ($setupConfig['open_until'] ?? ''));
+        $primaryColor = strtoupper(trim((string) ($setupConfig['primary_color'] ?? '')));
+        $accentColor = strtoupper(trim((string) ($setupConfig['accent_color'] ?? '')));
+        $openDays = json_decode((string) ($setupConfig['open_days'] ?? '[]'), true);
+        $openDays = is_array($openDays) ? array_values(array_filter(array_map('strval', $openDays))) : [];
+
+        if ($siteTitle === '' || $serviceName === '' || $reservationEmail === '' || $openFrom === '' || $openUntil === '') {
+            return true;
+        }
+
+        if (!filter_var($reservationEmail, FILTER_VALIDATE_EMAIL)) {
+            return true;
+        }
+
+        if ($logoUrl === '') {
+            return true;
+        }
+
+        if (empty($openDays)) {
+            return true;
+        }
+
+        if (!preg_match('/^#[0-9A-F]{6}$/', $primaryColor) || !preg_match('/^#[0-9A-F]{6}$/', $accentColor)) {
+            return true;
+        }
+
+        return trim((string) ($setupConfig['setup_completed'] ?? '0')) !== '1';
+    }
+
+    private function buildDefaultAdvancedSchedule(array $openDays, string $openFrom, string $openUntil): array
+    {
+        $schedule = [];
+        $days = ['1', '2', '3', '4', '5', '6', '0'];
+        $openDays = array_values(array_filter(array_map('strval', $openDays)));
+        $morningUntil = ((int) $openUntil <= 14) ? $openUntil : '13';
+        $afternoonFrom = ((int) $openFrom >= 14) ? $openFrom : '14';
+
+        foreach ($days as $day) {
+            $active = in_array($day, $openDays, true);
+            $schedule[$day] = [
+                'active' => $active,
+                'morning_enabled' => $active,
+                'morning_from' => $openFrom,
+                'morning_until' => $morningUntil,
+                'afternoon_enabled' => $active && ((int) $openUntil > 14),
+                'afternoon_from' => $afternoonFrom,
+                'afternoon_until' => $openUntil,
+            ];
+        }
+
+        return $schedule;
+    }
+
+    private function normalizeAdvancedSchedule($rawSchedule, array $allowedHours): array
+    {
+        $days = ['1', '2', '3', '4', '5', '6', '0'];
+        $normalized = [];
+
+        foreach ($days as $day) {
+            $row = is_array($rawSchedule) && isset($rawSchedule[$day]) && is_array($rawSchedule[$day]) ? $rawSchedule[$day] : [];
+            $active = !empty($row['active']);
+            $morningEnabled = $active && !empty($row['morning_enabled']);
+            $afternoonEnabled = $active && !empty($row['afternoon_enabled']);
+
+            $morningFrom = trim((string) ($row['morning_from'] ?? '08'));
+            $morningUntil = trim((string) ($row['morning_until'] ?? '13'));
+            $afternoonFrom = trim((string) ($row['afternoon_from'] ?? '14'));
+            $afternoonUntil = trim((string) ($row['afternoon_until'] ?? '22'));
+
+            if (!in_array($morningFrom, $allowedHours, true)) {
+                $morningFrom = '08';
+            }
+            if (!in_array($morningUntil, $allowedHours, true)) {
+                $morningUntil = '13';
+            }
+            if (!in_array($afternoonFrom, $allowedHours, true)) {
+                $afternoonFrom = '14';
+            }
+            if (!in_array($afternoonUntil, $allowedHours, true)) {
+                $afternoonUntil = '22';
+            }
+
+            $normalized[$day] = [
+                'active' => $active,
+                'morning_enabled' => $morningEnabled,
+                'morning_from' => $morningFrom,
+                'morning_until' => $morningUntil,
+                'afternoon_enabled' => $afternoonEnabled,
+                'afternoon_from' => $afternoonFrom,
+                'afternoon_until' => $afternoonUntil,
+            ];
+        }
+
+        return $normalized;
+    }
+
+    private function deriveSimpleScheduleFromAdvanced(array $advancedSchedule, array $allowedHours): array
+    {
+        $hourIndexes = array_flip($allowedHours);
+        $openDays = [];
+        $minIndex = null;
+        $maxIndex = null;
+
+        foreach ($advancedSchedule as $day => $row) {
+            $active = !empty($row['active']);
+            if (!$active) {
+                continue;
+            }
+
+            $dayHasSlot = false;
+            foreach ([
+                ['enabled' => !empty($row['morning_enabled']), 'from' => (string) ($row['morning_from'] ?? ''), 'until' => (string) ($row['morning_until'] ?? '')],
+                ['enabled' => !empty($row['afternoon_enabled']), 'from' => (string) ($row['afternoon_from'] ?? ''), 'until' => (string) ($row['afternoon_until'] ?? '')],
+            ] as $slot) {
+                if (!$slot['enabled']) {
+                    continue;
+                }
+                if (!isset($hourIndexes[$slot['from']], $hourIndexes[$slot['until']])) {
+                    continue;
+                }
+                $fromIndex = (int) $hourIndexes[$slot['from']];
+                $untilIndex = (int) $hourIndexes[$slot['until']];
+                if ($fromIndex >= $untilIndex) {
+                    continue;
+                }
+                $dayHasSlot = true;
+                $minIndex = $minIndex === null ? $fromIndex : min($minIndex, $fromIndex);
+                $maxIndex = $maxIndex === null ? $untilIndex : max($maxIndex, $untilIndex);
+            }
+
+            if ($dayHasSlot) {
+                $openDays[] = (string) $day;
+            }
+        }
+
+        if (empty($openDays) || $minIndex === null || $maxIndex === null) {
+            return [];
+        }
+
+        return [
+            'open_days' => array_values($openDays),
+            'open_from' => $allowedHours[$minIndex],
+            'open_until' => $allowedHours[$maxIndex],
         ];
     }
 
@@ -2131,7 +2389,7 @@ class Superadmin extends BaseController
         }
         $usersModel = new UsersModel();
         if ($usersModel->where('email', $email)->first()) {
-            return redirect()->to('/abmAdmin')->with('msg', ['type' => 'danger', 'body' => 'El email ya existe en AlfaReserva. Ingrese otro.']);
+            return redirect()->to('/abmAdmin')->with('msg', ['type' => 'danger', 'body' => 'El email ya existe en TURNOK. Ingrese otro.']);
         }
         if ($userPassword === '' || $userPasswordConfirm === '') {
             return redirect()->to('/abmAdmin')->with('msg', ['type' => 'danger', 'body' => 'Debe ingresar y repetir la contrasena del cliente.']);
@@ -2265,7 +2523,7 @@ class Superadmin extends BaseController
                 $usersModel = new UsersModel();
                 $previousEmail = strtolower(trim((string) ($cliente['email'] ?? '')));
                 if ($previousEmail !== $email && $usersModel->where('email', $email)->first()) {
-                    return $this->response->setJSON($this->setResponse(409, true, null, 'El email ya existe en AlfaReserva. Ingrese otro.'));
+                    return $this->response->setJSON($this->setResponse(409, true, null, 'El email ya existe en TURNOK. Ingrese otro.'));
                 }
                 $cuentaCliente = $this->resolveClienteCuenta((string) ($cliente['codigo'] ?? ''), (string) ($cliente['base'] ?? ''));
                 $displayName = $nombreApellido !== '' ? $nombreApellido : $razonSocial;
@@ -2322,7 +2580,7 @@ class Superadmin extends BaseController
                 }
                 $usersModel = new UsersModel();
                 if ($usersModel->where('email', $email)->first()) {
-                    return $this->response->setJSON($this->setResponse(409, true, null, 'El email ya existe en AlfaReserva. Ingrese otro.'));
+                    return $this->response->setJSON($this->setResponse(409, true, null, 'El email ya existe en TURNOK. Ingrese otro.'));
                 }
 
                 $databaseCreated = false;
@@ -2497,6 +2755,121 @@ class Superadmin extends BaseController
         }
 
         return $this->response->setJSON($this->setResponse(null, false, null, 'Logo actualizado correctamente.'));
+    }
+
+    public function saveClientSetupAjax()
+    {
+        $cliente = $this->scopedCurrentClienteOrNull();
+        if (!$cliente) {
+            return $this->response->setJSON($this->setResponse(403, true, null, 'No autorizado.'));
+        }
+
+        $id = (int) ($this->request->getVar('id') ?? 0);
+        if ($id <= 0 || $id !== (int) ($cliente['id'] ?? 0)) {
+            return $this->response->setJSON($this->setResponse(403, true, null, 'No autorizado.'));
+        }
+
+        $dismissOnly = (string) ($this->request->getVar('dismiss_only') ?? '0') === '1';
+        $dismissPrompt = (string) ($this->request->getVar('dismiss_prompt') ?? '0') === '1';
+        if ($dismissOnly) {
+            $this->saveClientConfigValues($id, ['setup_dismissed' => $dismissPrompt ? '1' : '0']);
+            return $this->response->setJSON($this->setResponse(null, false, [
+                'dismissed' => $dismissPrompt,
+            ], $dismissPrompt ? 'No se volvera a mostrar la configuracion inicial.' : 'La configuracion inicial volvera a mostrarse.'));
+        }
+
+        $siteTitle = trim((string) ($this->request->getVar('site_title') ?? ''));
+        $serviceName = trim((string) ($this->request->getVar('service_name') ?? ''));
+        $reservationEmail = strtolower(trim((string) ($this->request->getVar('reservation_email') ?? '')));
+        $openFrom = trim((string) ($this->request->getVar('open_from') ?? '08'));
+        $openUntil = trim((string) ($this->request->getVar('open_until') ?? '22'));
+        $primaryColor = strtoupper(trim((string) ($this->request->getVar('primary_color') ?? '#165ECC')));
+        $accentColor = strtoupper(trim((string) ($this->request->getVar('accent_color') ?? '#E3F50D')));
+        $openDays = $this->request->getVar('open_days');
+        $openDays = is_array($openDays) ? array_values(array_filter(array_map(static fn($d) => (string) $d, $openDays), static fn($d) => preg_match('/^[0-6]$/', $d) === 1)) : [];
+
+        $timeModel = new \App\Models\TimeModel();
+        $advancedScheduleJson = (string) ($this->request->getVar('advanced_schedule_json') ?? '');
+        if ($siteTitle === '' || $serviceName === '' || $reservationEmail === '') {
+            return $this->response->setJSON($this->setResponse(400, true, null, 'Completa nombre del sitio, servicio y email de reservas.'));
+        }
+        if (!filter_var($reservationEmail, FILTER_VALIDATE_EMAIL)) {
+            return $this->response->setJSON($this->setResponse(400, true, null, 'El email de reservas no es valido.'));
+        }
+
+        if ($advancedScheduleJson !== '') {
+            $advancedSchedule = json_decode($advancedScheduleJson, true);
+            if (!is_array($advancedSchedule)) {
+                return $this->response->setJSON($this->setResponse(400, true, null, 'La configuracion avanzada de horarios no es valida.'));
+            }
+            $advancedSchedule = $this->normalizeAdvancedSchedule($advancedSchedule, $timeModel->schedules);
+            $derivedSchedule = $this->deriveSimpleScheduleFromAdvanced($advancedSchedule, $timeModel->schedules);
+            if (empty($derivedSchedule)) {
+                return $this->response->setJSON($this->setResponse(400, true, null, 'Configura al menos un turno valido en los horarios avanzados.'));
+            }
+            $openDays = $derivedSchedule['open_days'];
+            $openFrom = $derivedSchedule['open_from'];
+            $openUntil = $derivedSchedule['open_until'];
+            $advancedScheduleJson = json_encode($advancedSchedule);
+        } else {
+            if (!in_array($openFrom, $timeModel->schedules, true) || !in_array($openUntil, $timeModel->schedules, true)) {
+                return $this->response->setJSON($this->setResponse(400, true, null, 'Selecciona horarios validos.'));
+            }
+            if (empty($openDays)) {
+                return $this->response->setJSON($this->setResponse(400, true, null, 'Selecciona al menos un dia de atencion.'));
+            }
+        }
+        if (!preg_match('/^#[0-9A-F]{6}$/', $primaryColor) || !preg_match('/^#[0-9A-F]{6}$/', $accentColor)) {
+            return $this->response->setJSON($this->setResponse(400, true, null, 'Los colores deben tener formato hexadecimal valido.'));
+        }
+
+        $this->saveClientConfigValues($id, [
+            'site_title' => $siteTitle,
+            'service_name' => $serviceName,
+            'reservation_email' => $reservationEmail,
+            'open_days' => json_encode($openDays),
+            'open_from' => $openFrom,
+            'open_until' => $openUntil,
+            'advanced_schedule_json' => $advancedScheduleJson,
+            'primary_color' => $primaryColor,
+            'accent_color' => $accentColor,
+            'setup_completed' => '1',
+            'setup_dismissed' => $dismissPrompt ? '1' : '0',
+        ]);
+
+        $configModel = new \App\Models\ConfigModel();
+        $existingEmail = $configModel->where('clave', 'email_reservas')->first();
+        if ($existingEmail) {
+            $configModel->update((int) $existingEmail['id'], ['valor' => $reservationEmail]);
+        } else {
+            $configModel->insert(['clave' => 'email_reservas', 'valor' => $reservationEmail]);
+        }
+
+        $timeRows = $timeModel->findAll();
+        $timePayload = [
+            'from' => $openFrom,
+            'until' => $openUntil,
+            'nocturnal_time' => '18',
+            'is_sunday' => in_array('0', $openDays, true) ? 0 : 1,
+        ];
+        if (!empty($timeRows)) {
+            $existingTime = $timeRows[0];
+            $timePayload['nocturnal_time'] = (string) (($existingTime['nocturnal_time'] ?? '') !== '' ? $existingTime['nocturnal_time'] : '18');
+            $timeModel->update((int) $existingTime['id'], $timePayload);
+        } else {
+            $timeModel->insert($timePayload);
+        }
+
+        return $this->response->setJSON($this->setResponse(null, false, [
+            'siteTitle' => $siteTitle,
+            'serviceName' => $serviceName,
+            'reservationEmail' => $reservationEmail,
+            'openDays' => $openDays,
+            'openFrom' => $openFrom,
+            'openUntil' => $openUntil,
+            'primaryColor' => $primaryColor,
+            'accentColor' => $accentColor,
+        ], 'Configuracion inicial guardada correctamente.'));
     }
 
     public function saveOwnClientPasswordAjax()

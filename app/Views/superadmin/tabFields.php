@@ -3,6 +3,39 @@
     <button type="submit" id="buttonEditField" class="btn btn-warning"><i class="fa-solid fa-pen-to-square me-1"></i>Editar</button>
 </div>
 
+<div class="table-responsive-sm mt-3">
+    <table class="table align-middle table-striped-columns">
+        <thead>
+            <tr>
+                <th scope="col">Cancha</th>
+                <th scope="col">Tipo</th>
+                <th scope="col">Medidas</th>
+                <th scope="col">Estado</th>
+                <th scope="col">Acciones</th>
+            </tr>
+        </thead>
+        <tbody>
+            <?php foreach ($fields as $field) : ?>
+                <tr>
+                    <td><?= $field['name'] ?></td>
+                    <td><?= $field['field_type'] ?? '-' ?></td>
+                    <td><?= $field['sizes'] ?? '-' ?></td>
+                    <td><?= ((int) ($field['disabled'] ?? 0) === 1) ? 'Deshabilitada' : 'Activa' ?></td>
+                    <td class="d-flex flex-wrap gap-2">
+                        <button type="button" class="btn btn-sm btn-outline-primary quick-edit-field" data-id="<?= $field['id'] ?>">
+                            Editar
+                        </button>
+                        <form action="<?= base_url('deleteField/' . $field['id']) ?>" method="POST" onsubmit="return confirm('Estas seguro de que deseas borrar esta cancha?');">
+                            <?= csrf_field() ?>
+                            <button type="submit" class="btn btn-sm btn-outline-danger">Borrar</button>
+                        </form>
+                    </td>
+                </tr>
+            <?php endforeach; ?>
+        </tbody>
+    </table>
+</div>
+
 <div class="enterFields d-none" id="enterFields">
     <form action="<?= base_url('saveField') ?>" method="POST">
         <div class="input-group mt-3 mb-3">

@@ -43,7 +43,7 @@ abstract class BaseController extends Controller
      *
      * @var array
      */
-    protected $helpers = [];
+    protected $helpers = ['app'];
 
     /**
      * Be sure to declare properties for any property fetch you initialized.
@@ -84,5 +84,75 @@ abstract class BaseController extends Controller
         if (!$existing) {
             $localitiesModel->insert(['name' => $normalized]);
         }
+    }
+
+    protected function resolveTenantBrandingAssets(string $codigo): array
+    {
+        $codigo = trim($codigo);
+        if ($codigo === '') {
+            return [
+                'logo' => null,
+                'background' => null,
+                'tenantDir' => null,
+            ];
+        }
+
+        $basePath = rtrim(FCPATH, '/\\') . DIRECTORY_SEPARATOR;
+        $candidates = [
+            [
+                'dir' => $basePath . $codigo . DIRECTORY_SEPARATOR,
+                'url' => base_url(PUBLIC_FOLDER . $codigo . '/'),
+                'public_dir' => 'public/' . $codigo . '/',
+            ],
+            [
+                'dir' => $basePath . 'assets' . DIRECTORY_SEPARATOR . 'tenants' . DIRECTORY_SEPARATOR . $codigo . DIRECTORY_SEPARATOR,
+                'url' => base_url(PUBLIC_FOLDER . 'assets/tenants/' . $codigo . '/'),
+                'public_dir' => 'public/assets/tenants/' . $codigo . '/',
+            ],
+        ];
+        $logoCandidates = ['logo.png', 'logo.jpg', 'logo.jpeg', 'logo.webp', 'LOGO.png', 'LOGO.jpg', 'LOGO.jpeg', 'LOGO.webp'];
+        $backgroundCandidates = ['fondo.jpg', 'fondo.png', 'fondo.webp', 'background.jpg', 'background.png', 'background.webp'];
+
+        $branding = [
+            'logo' => null,
+            'background' => null,
+            'tenantDir' => null,
+        ];
+
+        foreach ($candidates as $candidate) {
+            if (!is_dir($candidate['dir'])) {
+                continue;
+            }
+
+            if ($branding['tenantDir'] === null) {
+                $branding['tenantDir'] = $candidate['public_dir'];
+            }
+
+            if ($branding['logo'] === null) {
+                foreach ($logoCandidates as $file) {
+                    $fullPath = $candidate['dir'] . $file;
+                    if (is_file($fullPath)) {
+                        $branding['logo'] = $candidate['url'] . $file . '?v=' . ((string) (@filemtime($fullPath) ?: time()));
+                        break;
+                    }
+                }
+            }
+
+            if ($branding['background'] === null) {
+                foreach ($backgroundCandidates as $file) {
+                    $fullPath = $candidate['dir'] . $file;
+                    if (is_file($fullPath)) {
+                        $branding['background'] = $candidate['url'] . $file . '?v=' . ((string) (@filemtime($fullPath) ?: time()));
+                        break;
+                    }
+                }
+            }
+
+            if ($branding['logo'] !== null && $branding['background'] !== null) {
+                break;
+            }
+        }
+
+        return $branding;
     }
 }

@@ -37,11 +37,16 @@ class Customers extends BaseController
         $dni = trim((string) $this->request->getVar('dni'));
         $city = trim((string) $this->request->getVar('city'));
         $idRubro = (int) $this->request->getVar('id_rubro');
+        $rubroNombre = trim((string) $this->request->getVar('rubro_nombre'));
+        $signupPlan = trim((string) $this->request->getVar('plan'));
+        $billingCycle = strtoupper(trim((string) $this->request->getVar('billing_cycle')));
+        $includedResources = max(1, (int) $this->request->getVar('cantidad_servicios'));
+        $includedUsers = max(1, (int) $this->request->getVar('cantidad_usuarios'));
         $email = strtolower(trim((string) $this->request->getVar('email')));
         $password = (string) $this->request->getVar('password');
         $linkPathInput = trim((string) $this->request->getVar('link_path'));
 
-        if ($phone === '' || $name === '' || $razonSocial === '' || $dni === '' || $city === '' || $idRubro <= 0 || $email === '' || $password === '') {
+        if ($phone === '' || $name === '' || $razonSocial === '' || $dni === '' || $city === '' || ($idRubro <= 0 && $rubroNombre === '') || $email === '' || $password === '') {
             return redirect()->to('customers/register')->withInput()->with('msg', ['type' => 'danger', 'body' => 'Debe completar todos los campos']);
         }
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
@@ -50,6 +55,21 @@ class Customers extends BaseController
         if (!$this->isValidPasswordComplexity($password)) {
             return redirect()->to('customers/register')->withInput()->with('msg', ['type' => 'danger', 'body' => 'La contrasena debe tener al menos una mayuscula, una minuscula y un numero']);
         }
+        if ($idRubro <= 0 && $rubroNombre !== '') {
+            $db = Database::connect('alfareserva');
+            $rubro = $db->query(
+                'SELECT * FROM rubros WHERE LOWER(TRIM(descripcion)) = ? LIMIT 1',
+                [strtolower($rubroNombre)]
+            )->getRowArray();
+
+            if ($rubro) {
+                $idRubro = (int) ($rubro['id'] ?? 0);
+            } else {
+                $rubrosModel->insert(['descripcion' => $rubroNombre]);
+                $idRubro = (int) $rubrosModel->getInsertID();
+            }
+        }
+
         $rubro = $rubrosModel->find($idRubro);
         if (!$rubro) {
             return redirect()->to('customers/register')->withInput()->with('msg', ['type' => 'danger', 'body' => 'El rubro seleccionado no es valido']);
@@ -85,6 +105,7 @@ class Customers extends BaseController
 
         $databaseCreated = false;
         $userId = 0;
+        $clienteId = 0;
         try {
             $this->createDatabase($base);
             $databaseCreated = true;
@@ -115,6 +136,17 @@ class Customers extends BaseController
                 'estado' => 'TRIAL',
                 'link' => $link,
             ]);
+            $clienteId = (int) $clientesModel->getInsertID();
+
+            if ($clienteId > 0) {
+                $this->saveSignupSelection(
+                    $clienteId,
+                    $signupPlan,
+                    $billingCycle,
+                    $includedUsers,
+                    $includedResources
+                );
+            }
 
             $this->upsertTenantUser($base, $username, $email, $passwordHash, $name);
         } catch (\Throwable $e) {
@@ -134,12 +166,132 @@ class Customers extends BaseController
             return redirect()->to('customers/register')->withInput()->with('msg', ['type' => 'danger', 'body' => 'Error al registrar: ' . $e->getMessage()]);
         }
 
-        return redirect()->to(base_url('auth/login'))->with('msg', ['type' => 'success', 'body' => 'Alta registrada correctamente']);
+        $setupPath = '/' . trim($link, '/') . '/admin';
+
+        return redirect()
+            ->to('/auth/login?redirect=' . rawurlencode($setupPath))
+            ->with('msg', ['type' => 'success', 'body' => 'Alta registrada correctamente'])
+            ->with('post_register_setup', [
+                'path' => $setupPath,
+                'label' => 'Configurar mi sitio',
+            ]);
     }
 
     private function isValidPasswordComplexity(string $password): bool
     {
         return preg_match('/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$/', $password) === 1;
+    }
+
+    private function ensureClienteConfiguracionTable(): void
+    {
+        $db = Database::connect('alfareserva');
+        $db->query(
+            "CREATE TABLE IF NOT EXISTS `cliente_configuracion` (
+                `id` BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+                `cliente_id` INT(11) UNSIGNED NOT NULL,
+                `clave` VARCHAR(100) NOT NULL,
+                `valor` TEXT NULL,
+                `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                PRIMARY KEY (`id`),
+                UNIQUE KEY `uq_cliente_configuracion_cliente_clave` (`cliente_id`, `clave`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+        );
+    }
+
+    private function saveSignupSelection(int $clienteId, string $planCode, string $billingCycle, int $includedUsers, int $includedResources): void
+    {
+        if ($clienteId <= 0) {
+            return;
+        }
+
+        $this->ensureClienteConfiguracionTable();
+        $db = Database::connect('alfareserva');
+        $table = $db->table('cliente_configuracion');
+
+        $periodo = $billingCycle === 'ANUAL' ? 'YEAR' : 'MONTH';
+        $planCode = trim($planCode) !== '' ? trim($planCode) : 'Basico';
+
+        $payload = [
+            'signup_plan_code' => $planCode,
+            'signup_billing_cycle' => $periodo,
+            'signup_included_users' => (string) max(1, $includedUsers),
+            'signup_included_resources' => (string) max(1, $includedResources),
+        ];
+
+        foreach ($payload as $clave => $valor) {
+            $existing = $table
+                ->select('id')
+                ->where('cliente_id', $clienteId)
+                ->where('clave', $clave)
+                ->get()
+                ->getRowArray();
+
+            if ($existing) {
+                $table->where('id', (int) $existing['id'])->update(['valor' => $valor]);
+            } else {
+                $table->insert([
+                    'cliente_id' => $clienteId,
+                    'clave' => $clave,
+                    'valor' => $valor,
+                ]);
+            }
+        }
+
+        $this->upsertSignupContrato($clienteId, $planCode, $periodo, $includedUsers, $includedResources);
+    }
+
+    private function upsertSignupContrato(int $clienteId, string $planCode, string $periodo, int $includedUsers, int $includedResources): void
+    {
+        $db = Database::connect('alfareserva');
+        if (!$db->tableExists('cliente_contratos') || !$db->tableExists('planes')) {
+            return;
+        }
+
+        $normalizedCode = strtolower(trim($planCode));
+        if ($normalizedCode === '') {
+            $normalizedCode = 'basico';
+        }
+
+        $plan = $db->query(
+            'SELECT * FROM planes WHERE LOWER(TRIM(codigo)) = ? OR LOWER(TRIM(nombre)) = ? LIMIT 1',
+            [$normalizedCode, $normalizedCode]
+        )->getRowArray();
+
+        if (!$plan) {
+            return;
+        }
+
+        $periodo = strtoupper($periodo) === 'YEAR' ? 'YEAR' : 'MONTH';
+        $price = $periodo === 'YEAR'
+            ? (float) ($plan['price_year'] ?? 0)
+            : (float) ($plan['price_month'] ?? 0);
+
+        $payload = [
+            'cliente_id' => $clienteId,
+            'plan_id' => (int) ($plan['id'] ?? 0),
+            'periodo' => $periodo,
+            'estado' => 'ACTIVE',
+            'included_users' => max(1, $includedUsers),
+            'included_resources' => max(1, $includedResources),
+            'extra_users' => 0,
+            'extra_resources' => 0,
+            'precio_total' => $price,
+            'start_at' => date('Y-m-d'),
+            'end_at' => $periodo === 'YEAR' ? date('Y-m-d', strtotime('+1 year')) : date('Y-m-d', strtotime('+1 month')),
+        ];
+
+        $existing = $db->table('cliente_contratos')
+            ->where('cliente_id', $clienteId)
+            ->orderBy('id', 'DESC')
+            ->get()
+            ->getRowArray();
+
+        if ($existing) {
+            $db->table('cliente_contratos')->where('id', (int) $existing['id'])->update($payload);
+            return;
+        }
+
+        $db->table('cliente_contratos')->insert($payload);
     }
 
     private function normalizeTenantKey(string $value): string
