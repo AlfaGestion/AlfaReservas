@@ -3,77 +3,70 @@
 namespace App\Libraries;
 
 use App\Models\MercadoPagoKeysModel;
-// Quitamos la importación de MPApiException para evitar el error P1009
-use MercadoPago\SDK; 
-use MercadoPago\Preference;
-use MercadoPago\Item;
-// use MercadoPago\Exceptions\MPApiException; // <--- COMENTADO/ELIMINADO
+use MercadoPago\Client\Preference\PreferenceClient;
+use MercadoPago\Exceptions\MPApiException;
+use MercadoPago\MercadoPagoConfig;
 
 class MercadoPagoLibrary
 {
-    public $preferenceId = null;
+    public ?string $preferenceId = null;
 
-    function setPreference(string $bookingTitle, float $bookingAmount, int $quantity)
+    public function setPreference(string $bookingTitle, float $bookingAmount, int $quantity): void
     {
         $mpKeysModel = new MercadoPagoKeysModel();
         $mpKeys = $mpKeysModel->first();
 
         if (empty($mpKeys) || empty($mpKeys['access_token'])) {
-            throw new \Exception("Mercado Pago Access Token no encontrado.");
+            throw new \Exception('Mercado Pago Access Token no encontrado.');
+        }
+
+        if ($bookingAmount <= 0) {
+            throw new \Exception('El monto de la reserva debe ser un valor positivo.');
         }
 
         $this->ensureCaBundle();
-        SDK::setAccessToken($mpKeys['access_token']);
+        MercadoPagoConfig::setAccessToken((string) $mpKeys['access_token']);
 
         try {
-            // 1. Validar que el monto no sea cero o negativo (Causa común de fallo silencioso)
-            if ($bookingAmount <= 0) {
-                 throw new \Exception("El monto de la reserva debe ser un valor positivo.");
-            }
-
-            $preference = new Preference();
-
-            $item = new Item();
-            $item->title = $bookingTitle;
-            $item->quantity = $quantity;
-            $item->unit_price = $bookingAmount;
-            $item->currency_id = 'ARS';
-
-            $preference->items = [$item];
             $envBaseUrl = getenv('MP_BACK_URL_BASE');
             $appConfig = config('App');
             $baseUrl = rtrim($envBaseUrl ?: $appConfig->baseURL, '/') . '/';
-            $preference->back_urls = [
-            "success" => $baseUrl . 'payment/success',
-            "failure" => $baseUrl . 'payment/failure',
+
+            $request = [
+                'items' => [[
+                    'title' => $bookingTitle,
+                    'quantity' => $quantity,
+                    'unit_price' => (float) $bookingAmount,
+                    'currency_id' => 'ARS',
+                ]],
+                'back_urls' => [
+                    'success' => $baseUrl . 'payment/success',
+                    'failure' => $baseUrl . 'payment/failure',
+                ],
+                'auto_return' => 'approved',
+                'binary_mode' => true,
             ];
 
-            $preference->auto_return = "approved";
-            $preference->binary_mode = true;
-            
-            // Llamada a la API
-            $preference->save();
+            $client = new PreferenceClient();
+            $preference = $client->create($request);
 
-            // 🚨 DIAGNÓSTICO CLAVE: Revisar si el ID es nulo
             if (empty($preference->id)) {
-                
-                // Muestra el objeto completo en el log de PHP para ver la respuesta de error de la API
-                $logMessage = "FALLO SILENCIOSO MP: Preference ID es NULL. Objeto completo: " . print_r($preference, true);
-                error_log($logMessage);
-
-                // Lanza una excepción con un mensaje genérico, pero el detalle está en el log.
-                throw new \Exception("La API de Mercado Pago devolvió un error (revisa los logs de PHP para ver la respuesta de validación).");
+                error_log('FALLO MP: Preference ID es NULL. Objeto completo: ' . print_r($preference, true));
+                throw new \Exception('La API de Mercado Pago devolvio una preferencia invalida.');
             }
 
             $this->preferenceId = $preference->id;
-            
+        } catch (MPApiException $e) {
+            $apiResponse = $e->getApiResponse();
+            $apiContent = $apiResponse ? json_encode($apiResponse->getContent()) : 'sin detalle';
+
+            throw new \Exception('Error API Mercado Pago: ' . $apiContent, 0, $e);
         } catch (\Exception $e) {
-            // Captura cualquier error de la SDK, incluyendo la excepción que forzamos arriba.
-            throw new \Exception("Error al crear la preferencia de pago: " . $e->getMessage());
+            throw new \Exception('Error al crear la preferencia de pago: ' . $e->getMessage(), 0, $e);
         }
     }
 
-    private function ensureCaBundle()
+    private function ensureCaBundle(): void
     {
         $caFile = ini_get('curl.cainfo');
         if (!$caFile) {
