@@ -22,7 +22,7 @@ class ContentSecurityPolicy extends BaseConfig
     /**
      * Default CSP report context
      */
-    public bool $reportOnly = false;
+    public bool $reportOnly = true;
 
     /**
      * Specifies a URL where a browser will send reports
@@ -54,21 +54,35 @@ class ContentSecurityPolicy extends BaseConfig
      *
      * @var string|string[]
      */
-    public $scriptSrc = 'self';
+    public $scriptSrc = [
+        'self',
+        'unsafe-inline',
+        'https://cdn.jsdelivr.net',
+        'https://kit.fontawesome.com',
+        'https://sdk.mercadopago.com',
+    ];
 
     /**
      * Lists allowed stylesheets' URLs.
      *
      * @var string|string[]
      */
-    public $styleSrc = 'self';
+    public $styleSrc = [
+        'self',
+        'unsafe-inline',
+        'https://cdn.jsdelivr.net',
+    ];
 
     /**
      * Defines the origins from which images can be loaded.
      *
      * @var string|string[]
      */
-    public $imageSrc = 'self';
+    public $imageSrc = [
+        'self',
+        'data:',
+        'https:',
+    ];
 
     /**
      * Restricts the URLs that can appear in a page's `<base>` element.
@@ -92,14 +106,27 @@ class ContentSecurityPolicy extends BaseConfig
      *
      * @var string|string[]
      */
-    public $connectSrc = 'self';
+    public $connectSrc = [
+        'self',
+        'https://sdk.mercadopago.com',
+        'https://api.mercadopago.com',
+        'https://*.mercadopago.com',
+        'https://*.mercadopago.com.ar',
+        'https://*.mercadopago.com.br',
+    ];
 
     /**
      * Specifies the origins that can serve web fonts.
      *
      * @var string|string[]
      */
-    public $fontSrc;
+    public $fontSrc = [
+        'self',
+        'data:',
+        'https://fonts.gstatic.com',
+        'https://ka-f.fontawesome.com',
+        'https://use.fontawesome.com',
+    ];
 
     /**
      * Lists valid endpoints for submission from `<form>` tags.
@@ -116,7 +143,7 @@ class ContentSecurityPolicy extends BaseConfig
      *
      * @var string|string[]|null
      */
-    public $frameAncestors;
+    public $frameAncestors = 'self';
 
     /**
      * The frame-src directive restricts the URLs which may
@@ -124,7 +151,16 @@ class ContentSecurityPolicy extends BaseConfig
      *
      * @var array|string|null
      */
-    public $frameSrc;
+    public $frameSrc = [
+        'self',
+        'https://sdk.mercadopago.com',
+        'https://www.mercadopago.com',
+        'https://www.mercadopago.com.ar',
+        'https://www.mercadopago.com.br',
+        'https://*.mercadopago.com',
+        'https://*.mercadopago.com.ar',
+        'https://*.mercadopago.com.br',
+    ];
 
     /**
      * Restricts the origins allowed to deliver video and audio.
@@ -138,7 +174,7 @@ class ContentSecurityPolicy extends BaseConfig
      *
      * @var string|string[]
      */
-    public $objectSrc = 'self';
+    public $objectSrc = 'none';
 
     /**
      * @var string|string[]|null
@@ -173,4 +209,14 @@ class ContentSecurityPolicy extends BaseConfig
      * Replace nonce tag automatically
      */
     public bool $autoNonce = true;
+
+    public function __construct()
+    {
+        parent::__construct();
+
+        $isProduction = env('CI_ENVIRONMENT', 'production') === 'production';
+
+        $this->reportOnly = ! $isProduction;
+        $this->upgradeInsecureRequests = $isProduction;
+    }
 }
